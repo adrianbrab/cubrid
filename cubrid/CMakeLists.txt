@@ -280,6 +280,7 @@ set(JSP_SOURCES
 set(TRANSACTION_SOURCES
   ${TRANSACTION_DIR}/boot_sr.c
   ${TRANSACTION_DIR}/client_credentials.cpp
+  ${TRANSACTION_DIR}/checkpoint_info.cpp
   ${TRANSACTION_DIR}/locator.c
   ${TRANSACTION_DIR}/locator_sr.c
   ${TRANSACTION_DIR}/lock_manager.c
@@ -311,6 +312,7 @@ set(TRANSACTION_SOURCES
   )
 set(TRANSACTION_HEADERS
   ${TRANSACTION_DIR}/client_credentials.hpp
+  ${TRANSACTION_DIR}/checkpoint_info.hpp
   ${TRANSACTION_DIR}/log_2pc.h
   ${TRANSACTION_DIR}/log_append.hpp
   ${TRANSACTION_DIR}/log_archives.hpp
