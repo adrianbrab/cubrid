@@ -1,147 +1,176 @@
 
+#include "checkpoint_info.hpp"
+
 namespace cublog
 {
-  void load_trantable_snapshot ()
+
+  void checkpoint_info::load_trantable_snapshot ()
   {
-    TR_TABLE_CS_ENTER (thread_p);
+  }
 
-    /* allocate memory space for the transaction descriptors */
-    tmp_chkpt.ntrans = log_Gl.trantable.num_assigned_indices;
-    length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
+  int
+  log_lsa_size (LOG_LSA log, cubpacking::packer &serializator)
+  {
+    int size = 0;
+    size += serializator.get_packed_bigint_size (log.pageid);
+    size += serializator.get_packed_bigint_size (log.offset);
 
-    chkpt_trans = (LOG_INFO_CHKPT_TRANS *) malloc (length_all_chkpt_trans);
-    if (chkpt_trans == NULL)
+    return size;
+  }
+
+  void
+  log_lsa_pack (LOG_LSA log, cubpacking::packer &serializator)
+  {
+    serializator.pack_bigint (log.pageid);
+    serializator.pack_bigint (log.offset);
+  }
+
+  void
+  checkpoint_info::pack (cubpacking::packer &serializator) const
+  {
+
+    log_lsa_pack (m_start_redo_lsa, serializator);
+    log_lsa_pack (m_snapshot_lsa, serializator);
+
+    serializator.pack_bigint (m_trans.size ());
+    for (const checkpoint_tran_info tran_info : m_trans)
       {
-	TR_TABLE_CS_EXIT (thread_p);
-	goto error_cannot_chkpt;
+	serializator.pack_int (tran_info.isloose_end);
+	serializator.pack_int (tran_info.trid);
+	serializator.pack_int (tran_info.state);
+	log_lsa_pack (tran_info.head_lsa, serializator);
+	log_lsa_pack (tran_info.tail_lsa, serializator);
+	log_lsa_pack (tran_info.undo_nxlsa, serializator);
+
+	log_lsa_pack (tran_info.posp_nxlsa, serializator);
+	log_lsa_pack (tran_info.savept_lsa, serializator);
+	log_lsa_pack (tran_info.tail_topresult_lsa, serializator);
+	log_lsa_pack (tran_info.start_postpone_lsa, serializator);
+	serializator.pack_c_string (tran_info.user_name, LOG_USERNAME_MAX);
       }
 
-    log_Gl.prior_info.prior_lsa_mutex.lock ();
-
-    /* CHECKPOINT THE TRANSACTION TABLE */
-
-    LSA_SET_NULL (&smallest_lsa);
-    for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
+    serializator.pack_bigint (m_sysops.size ());
+    for (const checkpoint_sysop_info sysop_info : m_sysops)
       {
-	/*
-	 * Don't checkpoint current system transaction. That is, the one of
-	 * checkpoint process
-	 */
-	if (i == LOG_SYSTEM_TRAN_INDEX)
-	  {
-	    continue;
-	  }
-	act_tdes = LOG_FIND_TDES (i);
-	assert (ntrans < tmp_chkpt.ntrans);
-	logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa);
+	serializator.pack_int (sysop_info.trid);
+	log_lsa_pack (sysop_info.sysop_start_postpone_lsa, serializator);
+	log_lsa_pack (sysop_info.atomic_sysop_start_lsa, serializator);
       }
 
-    /*
-     * Reset the structure to the correct number of transactions and
-     * recalculate the length
-     */
-    tmp_chkpt.ntrans = ntrans;
-    length_all_chkpt_trans = sizeof (*chkpt_trans) * tmp_chkpt.ntrans;
+    serializator.pack_bool (m_has_2pc);
+  }
 
-    /*
-     * Scan again if there were any top system operations in the process of being committed.
-     * NOTE that we checkpoint top system operations only when there are in the
-     * process of commit. Not knowledge of top system operations that are not
-     * in the process of commit is required since if there is a crash, the system
-     * operation is aborted as part of the transaction.
-     */
+  void
+  checkpoint_info::unpack (cubpacking::unpacker &deserializator)
+  {
+    int64_t pageid, offset;
 
-    chkpt_topops = NULL;
-    if (ntops > 0)
+    deserializator.unpack_bigint (pageid);
+    deserializator.unpack_bigint (offset);
+    m_start_redo_lsa = log_lsa (pageid, offset);
+
+    deserializator.unpack_bigint (pageid);
+    deserializator.unpack_bigint (offset);
+    m_snapshot_lsa = log_lsa (pageid, offset);
+
+    size_t m_trans_size = 0;
+    deserializator.unpack_bigint (m_trans_size);
+    for (int i = 0; i < m_trans_size; i++)
       {
-	tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
-	length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-	chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
-	if (chkpt_topops == NULL)
-	  {
-	    free_and_init (chkpt_trans);
-	    log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	    TR_TABLE_CS_EXIT (thread_p);
-	    goto error_cannot_chkpt;
-	  }
+	LOG_INFO_CHKPT_TRANS chkpt_trans;
 
-	/* CHECKPOINTING THE TOP ACTIONS */
-	for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
-	  {
-	    /*
-	     * Don't checkpoint current system transaction. That is, the one of
-	     * checkpoint process
-	     */
-	    if (i == LOG_SYSTEM_TRAN_INDEX)
-	      {
-		continue;
-	      }
-	    act_tdes = LOG_FIND_TDES (i);
-	    error_code =
-		    logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, act_tdes, ntops, length_all_tops);
-	    if (error_code != NO_ERROR)
-	      {
-		goto error_cannot_chkpt;
-	      }
-	  }
-      }
-    else
-      {
-	tmp_chkpt.ntops = 1;
-	length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-	chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
-	if (chkpt_topops == NULL)
-	  {
-	    free_and_init (chkpt_trans);
-	    log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	    TR_TABLE_CS_EXIT (thread_p);
-	    goto error_cannot_chkpt;
-	  }
+	deserializator.unpack_int (chkpt_trans.isloose_end);
+	deserializator.unpack_int (chkpt_trans.trid);
+
+	int tran_state_int;
+	deserializator.unpack_int (tran_state_int);
+	chkpt_trans.state = static_cast<TRAN_STATE> (tran_state_int);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_trans.head_lsa = log_lsa (pageid, offset);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_trans.tail_lsa = log_lsa (pageid, offset);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_trans.undo_nxlsa = log_lsa (pageid, offset);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_trans.savept_lsa = log_lsa (pageid, offset);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_trans.tail_topresult_lsa = log_lsa (pageid, offset);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_trans.start_postpone_lsa = log_lsa (pageid, offset);
+	deserializator.unpack_c_string (chkpt_trans.user_name, LOG_USERNAME_MAX);
+
+	m_trans.push_back (chkpt_trans);
+
       }
 
-    // Checkpoint system transactions' topops
-    // *INDENT-OFF*
-    mapper = [thread_p, &chkpt_topops, &chkpt_trans, &tmp_chkpt, &ntops, &length_all_tops, &error_code] (log_tdes &tdes)
-    {
-      error_code =
-        logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, &tdes, ntops, length_all_tops);
-    };
-
-    log_system_tdes::map_all_tdes (mapper);
-    // *INDENT-ON*
-    if (error_code != NO_ERROR)
+    size_t m_sysop_size = 0;
+    deserializator.unpack_bigint (m_sysop_size);
+    for (int i = 0; i < m_sysop_size; i++)
       {
-	goto error_cannot_chkpt;
+	LOG_INFO_CHKPT_SYSOP chkpt_sysop;
+	deserializator.unpack_int (chkpt_sysop.trid);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_sysop.sysop_start_postpone_lsa = log_lsa (pageid, offset);
+
+	deserializator.unpack_bigint (pageid);
+	deserializator.unpack_bigint (offset);
+	chkpt_sysop.atomic_sysop_start_lsa = log_lsa (pageid, offset);
+
+	m_sysops.push_back (chkpt_sysop);
       }
 
-    assert (sizeof (*chkpt_topops) * ntops <= length_all_tops);
-    tmp_chkpt.ntops = ntops;
-    length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+    deserializator.unpack_bool (m_has_2pc);
+  }
 
-    node =
-	    prior_lsa_alloc_and_copy_data (thread_p, LOG_END_CHKPT, RV_NOT_DEFINED, NULL, length_all_chkpt_trans,
-					   (char *) chkpt_trans, (int) length_all_tops, (char *) chkpt_topops);
-    if (node == NULL)
+  size_t
+  checkpoint_info::get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const
+  {
+    size_t size = log_lsa_size (m_start_redo_lsa, serializator);
+    size += log_lsa_size (m_snapshot_lsa, serializator);
+
+    size += serializator.get_packed_bigint_size (m_trans.size ());
+    for (const checkpoint_tran_info tran_info : m_trans)
       {
-	free_and_init (chkpt_trans);
+	size += serializator.get_packed_int_size (tran_info.isloose_end);
+	size += serializator.get_packed_int_size (tran_info.trid);
+	size += serializator.get_packed_int_size (tran_info.state);
 
-	if (chkpt_topops != NULL)
-	  {
-	    free_and_init (chkpt_topops);
-	  }
-	log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	TR_TABLE_CS_EXIT (thread_p);
-	goto error_cannot_chkpt;
+	size += log_lsa_size (tran_info.head_lsa, serializator);
+	size += log_lsa_size (tran_info.tail_lsa, serializator);
+	size += log_lsa_size (tran_info.undo_nxlsa, serializator);
+
+	size += log_lsa_size (tran_info.posp_nxlsa, serializator);
+	size += log_lsa_size (tran_info.savept_lsa, serializator);
+	size += log_lsa_size (tran_info.tail_topresult_lsa, serializator);
+	size += log_lsa_size (tran_info.start_postpone_lsa, serializator);
+	size += serializator.get_packed_c_string_size (tran_info.user_name, LOG_USERNAME_MAX, 0);
       }
 
-    chkpt = (LOG_REC_CHKPT *) node->data_header;
-    *chkpt = tmp_chkpt;
+    size += serializator.get_packed_bigint_size (m_sysops.size ());
+    for (const checkpoint_sysop_info sysop_info : m_sysops)
+      {
+	size += serializator.get_packed_int_size (sysop_info.trid);
+	size += log_lsa_size (sysop_info.sysop_start_postpone_lsa, serializator);
+	size += log_lsa_size (sysop_info.atomic_sysop_start_lsa, serializator);
+      }
 
-    prior_lsa_next_record_with_lock (thread_p, node, tdes);
+    size += serializator.get_packed_bool_size (m_has_2pc);
 
-    log_Gl.prior_info.prior_lsa_mutex.unlock ();
-
-    TR_TABLE_CS_EXIT (thread_p);
+    return size;
   }
 
 }
