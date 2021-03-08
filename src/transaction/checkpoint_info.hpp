@@ -1,3 +1,8 @@
+
+#include "log_lsa.hpp"
+#include "log_record.hpp"
+#include "packable_object.hpp"
+
 //
 // log_checkpoint_info.hpp - the information saved during log checkpoint and used for recovery
 //
