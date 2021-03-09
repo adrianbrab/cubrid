@@ -23,7 +23,7 @@
 #include "log_lsa.hpp"
 
 #include <algorithm>
-#include <array>
+#include <vector>
 #include <random>
 #include <cstdlib>
 
@@ -38,7 +38,7 @@ class test_env_chkpt
     LOG_LSA generate_log_lsa();
     std::vector<LOG_LSA> used_logs;
 
-    int max = 32700;
+    static const int max = 32700;
 
   private:
     static void require_equal (checkpoint_info *before, checkpoint_info *after);
@@ -55,8 +55,24 @@ TEST_CASE ("Test pack/unpack checkpoint_info class", "")
 
 test_env_chkpt::test_env_chkpt ()
 {
+  srand (time (0));
   before = new checkpoint_info ();
   after  = new checkpoint_info ();
+
+  log_lsa log_to_add = this->generate_log_lsa();
+  before->m_start_redo_lsa = log_to_add;
+  after->m_start_redo_lsa = log_to_add;
+
+  log_to_add = this->generate_log_lsa();
+  before->m_snapshot_lsa = log_to_add;
+  after->m_snapshot_lsa = log_to_add;
+
+  for (int i = 0; i < 100; i++)
+    {
+      log_to_add = this->generate_log_lsa();
+      before->m_snapshot_lsa = log_to_add;
+      after->m_snapshot_lsa = log_to_add;
+    }
 }
 
 test_env_chkpt::~test_env_chkpt ()
@@ -66,7 +82,15 @@ test_env_chkpt::~test_env_chkpt ()
 LOG_LSA
 test_env_chkpt::generate_log_lsa()
 {
+  LOG_LSA new_log = log_lsa (rand() % this->max, rand() % this->max);
 
+  while (std::find (this->used_logs.begin(), this->used_logs.end(), new_log) != this->used_logs.end())
+    {
+      new_log = log_lsa (rand() % this->max, rand() % this->max);
+    }
+
+  this->used_logs.push_back (new_log);
+  return new_log;
 }
 
 void
