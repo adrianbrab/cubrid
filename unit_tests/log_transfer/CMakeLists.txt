@@ -23,7 +23,7 @@ project(test_log_transfer)
 #
 
 set(TEST_CHKPT_INFO_SOURCES
-  ${TRANSACTION_DIR}/checkpoint_info.cpp
+  ${TRANSACTION_DIR}/log_checkpoint_info.cpp
   test_main_chkpt_info.cpp
   )
 SET_SOURCE_FILES_PROPERTIES(
