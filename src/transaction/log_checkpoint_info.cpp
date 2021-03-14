@@ -11,8 +11,8 @@ namespace cublog
   log_lsa_size (LOG_LSA log, cubpacking::packer &serializator, std::size_t start_offset, std::size_t size_arg)
   {
     size_t size = size_arg;
-    size += serializator.get_packed_bigint_size (start_offset + size);
-    size += serializator.get_packed_short_size (start_offset + size);
+    size += serializator.get_packed_bigint_size (size);
+    size += serializator.get_packed_short_size (size);
 
     return size;
   }
@@ -73,7 +73,6 @@ namespace cublog
   void
   checkpoint_info::unpack (cubpacking::unpacker &deserializator)
   {
-    int64_t pageid, offset;
     m_start_redo_lsa = log_lsa_unpack (deserializator);
     m_snapshot_lsa = log_lsa_unpack (deserializator);
 
@@ -92,6 +91,8 @@ namespace cublog
 	chkpt_trans.head_lsa = log_lsa_unpack (deserializator);
 	chkpt_trans.tail_lsa = log_lsa_unpack (deserializator);
 	chkpt_trans.undo_nxlsa = log_lsa_unpack (deserializator);
+
+	chkpt_trans.posp_nxlsa = log_lsa_unpack (deserializator);
 	chkpt_trans.savept_lsa = log_lsa_unpack (deserializator);
 	chkpt_trans.tail_topresult_lsa = log_lsa_unpack (deserializator);
 	chkpt_trans.start_postpone_lsa = log_lsa_unpack (deserializator);
@@ -123,12 +124,12 @@ namespace cublog
     size = log_lsa_size (m_start_redo_lsa, serializator, start_offset, size);
     size = log_lsa_size (m_snapshot_lsa, serializator, start_offset, size);
 
-    size += serializator.get_packed_bigint_size (m_trans.size ());
+    size += serializator.get_packed_bigint_size (size);
     for (const checkpoint_tran_info tran_info : m_trans)
       {
-	size += serializator.get_packed_int_size (tran_info.isloose_end);
-	size += serializator.get_packed_int_size (tran_info.trid);
-	size += serializator.get_packed_int_size (tran_info.state);
+	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (size);
 
 	size = log_lsa_size (tran_info.head_lsa, serializator, start_offset, size);
 	size = log_lsa_size (tran_info.tail_lsa, serializator, start_offset, size);
@@ -141,15 +142,15 @@ namespace cublog
 	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name), size);
       }
 
-    size += serializator.get_packed_bigint_size (m_sysops.size ());
+    size += serializator.get_packed_bigint_size (size);
     for (const checkpoint_sysop_info sysop_info : m_sysops)
       {
-	size += serializator.get_packed_int_size (sysop_info.trid);
+	size += serializator.get_packed_int_size (size);
 	size = log_lsa_size (sysop_info.sysop_start_postpone_lsa, serializator, start_offset, size);
 	size = log_lsa_size (sysop_info.atomic_sysop_start_lsa, serializator, start_offset, size);
       }
 
-    size += serializator.get_packed_bool_size (m_has_2pc);
+    size += serializator.get_packed_bool_size (size);
 
     return size;
   }

@@ -57,7 +57,7 @@ TEST_CASE ("Test pack/unpack checkpoint_info class", "")
 
   cubpacking::packer *pac = new cubpacking::packer();
   size_t size = env->before->get_packed_size (*pac, 0);
-  char *buffer = (char *)calloc (size, 1);
+  char buffer[size + 1];
   pac->set_buffer (buffer, size);
   env->before->pack (*pac);
 
