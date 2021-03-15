@@ -1,14 +1,28 @@
+/*
+ * Copyright 2008 Search Solution Corporation
+ * Copyright 2016 CUBRID Corporation
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *
+ */
 
 #include "log_checkpoint_info.hpp"
+
 namespace cublog
 {
 
-  void checkpoint_info::load_trantable_snapshot ()
-  {
-  }
-
   int
-  log_lsa_size (LOG_LSA log, cubpacking::packer &serializator, std::size_t start_offset, std::size_t size_arg)
+  log_lsa_size (cubpacking::packer &serializator, std::size_t start_offset, std::size_t size_arg)
   {
     size_t size = size_arg;
     size += serializator.get_packed_bigint_size (start_offset + size);
@@ -76,18 +90,16 @@ namespace cublog
     m_start_redo_lsa = log_lsa_unpack (deserializator);
     m_snapshot_lsa = log_lsa_unpack (deserializator);
 
-    size_t m_trans_size = 0;
-    deserializator.unpack_bigint (m_trans_size);
-    for (int i = 0; i < m_trans_size; i++)
+    std::uint64_t trans_size = 0;
+    deserializator.unpack_bigint (trans_size);
+    for (uint i = 0; i < trans_size; i++)
       {
 	LOG_INFO_CHKPT_TRANS chkpt_trans;
 
 	deserializator.unpack_int (chkpt_trans.isloose_end);
 	deserializator.unpack_int (chkpt_trans.trid);
 
-	int tran_state_int;
-	deserializator.unpack_int (tran_state_int);
-	chkpt_trans.state = static_cast<TRAN_STATE> (tran_state_int);
+	deserializator.unpack_from_int (chkpt_trans.state);
 	chkpt_trans.head_lsa = log_lsa_unpack (deserializator);
 	chkpt_trans.tail_lsa = log_lsa_unpack (deserializator);
 	chkpt_trans.undo_nxlsa = log_lsa_unpack (deserializator);
@@ -102,9 +114,9 @@ namespace cublog
 
       }
 
-    size_t m_sysop_size = 0;
-    deserializator.unpack_bigint (m_sysop_size);
-    for (int i = 0; i < m_sysop_size; i++)
+    std::uint64_t sysop_size = 0;
+    deserializator.unpack_bigint (sysop_size);
+    for (uint i = 0; i < sysop_size; i++)
       {
 	LOG_INFO_CHKPT_SYSOP chkpt_sysop;
 	deserializator.unpack_int (chkpt_sysop.trid);
@@ -139,7 +151,7 @@ namespace cublog
 	size = log_lsa_size (tran_info.savept_lsa, serializator, start_offset, size);
 	size = log_lsa_size (tran_info.tail_topresult_lsa, serializator, start_offset, size);
 	size = log_lsa_size (tran_info.start_postpone_lsa, serializator, start_offset, size);
-	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name), size);
+	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name),start_offset + size);
       }
 
     size += serializator.get_packed_bigint_size (start_offset + size);
@@ -153,6 +165,10 @@ namespace cublog
     size += serializator.get_packed_bool_size (start_offset + size);
 
     return size;
+  }
+
+  void checkpoint_info::load_trantable_snapshot ()
+  {
   }
 
 }
