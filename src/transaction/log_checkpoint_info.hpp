@@ -33,12 +33,11 @@ namespace cublog
       const;     // the LSA of starting redo. min of checkpoint LSA and oldest unflushed LSA.
       void set_start_redo_lsa (const log_lsa &start_redo_lsa);
 
-
+    private:
       log_lsa m_start_redo_lsa;
       log_lsa m_snapshot_lsa;
       std::vector<checkpoint_tran_info> m_trans;
       std::vector<checkpoint_sysop_info> m_sysops;
       bool m_has_2pc;				      // true if any LOG_ISTRAN_2PC (tdes) is true
-    private:
   };
 }

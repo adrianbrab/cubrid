@@ -19,6 +19,7 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
+#define private public
 #include "log_checkpoint_info.hpp"
 #include "log_lsa.hpp"
 #include "log_record.hpp"
@@ -27,6 +28,7 @@
 #include <vector>
 #include <random>
 #include <cstdlib>
+
 
 using namespace cublog;
 
@@ -48,7 +50,6 @@ class test_env_chkpt
 
     checkpoint_info before;
     checkpoint_info after;
-  private:
 
 };
 
