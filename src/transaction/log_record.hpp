@@ -416,13 +416,11 @@ log_info_chkpt_trans::operator== (const log_info_chkpt_trans &ochkpt) const
       return false;
     }
 
-  for (int i = 0; i < strlen (user_name); i++)
+  if (std::strcmp (user_name, ochkpt.user_name) != 0)
     {
-      if (user_name[i] != ochkpt.user_name[i])
-	{
-	  return false;
-	}
+      return false;
     }
+
   return true;
 }
 

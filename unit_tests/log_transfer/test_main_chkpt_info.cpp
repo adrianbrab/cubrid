@@ -21,6 +21,7 @@
 
 #define private public
 #include "log_checkpoint_info.hpp"
+#undef private
 #include "log_lsa.hpp"
 #include "log_record.hpp"
 
@@ -29,9 +30,7 @@
 #include <random>
 #include <cstdlib>
 
-
 using namespace cublog;
-
 
 class test_env_chkpt
 {
@@ -45,7 +44,7 @@ class test_env_chkpt
     LOG_INFO_CHKPT_SYSOP generate_log_info_chkpt_sysop();
     std::vector<LOG_LSA> used_logs;
 
-    const int max = 32700;
+    constexpr int MAX_RAND = 32700;
     static void require_equal (checkpoint_info before, checkpoint_info after);
 
     checkpoint_info before;
@@ -119,12 +118,8 @@ test_env_chkpt::test_env_chkpt () : test_env_chkpt (100, 100)
 test_env_chkpt::test_env_chkpt (int size_trans, int size_sysops)
 {
   srand (time (0));
-
-  log_lsa log_to_add = this->generate_log_lsa();
-  before.m_start_redo_lsa = log_to_add;
-
-  log_to_add = this->generate_log_lsa();
-  before.m_snapshot_lsa = log_to_add;
+  before.m_start_redo_lsa = this->generate_log_lsa();
+  before.m_snapshot_lsa = this->generate_log_lsa();
 
   LOG_INFO_CHKPT_TRANS chkpt_trans_to_add;
   LOG_INFO_CHKPT_SYSOP chkpt_sysop_to_add;
@@ -153,9 +148,9 @@ test_env_chkpt::generate_log_info_chkpt_trans()
 {
   LOG_INFO_CHKPT_TRANS chkpt_trans;
 
-  chkpt_trans.isloose_end = rand() % max;
-  chkpt_trans.trid        = rand() % max;
-  chkpt_trans.state       = static_cast<TRAN_STATE> (rand() % 15);
+  chkpt_trans.isloose_end = rand() % 2; // can be true or false
+  chkpt_trans.trid        = rand() % MAX_RAND;
+  chkpt_trans.state       = static_cast<TRAN_STATE> (rand() % TRAN_UNACTIVE_UNKNOWN);
 
   chkpt_trans.head_lsa    = generate_log_lsa();
   chkpt_trans.tail_lsa    = generate_log_lsa();
@@ -183,7 +178,7 @@ test_env_chkpt::generate_log_info_chkpt_sysop()
 {
   LOG_INFO_CHKPT_SYSOP chkpt_sysop;
 
-  chkpt_sysop.trid                      = rand() % max;
+  chkpt_sysop.trid                      = rand() % MAX_RAND;
   chkpt_sysop.sysop_start_postpone_lsa  = generate_log_lsa();
   chkpt_sysop.atomic_sysop_start_lsa    = generate_log_lsa();
 
@@ -193,15 +188,7 @@ test_env_chkpt::generate_log_info_chkpt_sysop()
 LOG_LSA
 test_env_chkpt::generate_log_lsa()
 {
-  LOG_LSA new_log = log_lsa (rand() % max, rand() % max);
-
-  while (std::find (used_logs.begin(), used_logs.end(), new_log) != used_logs.end())
-    {
-      new_log = log_lsa (rand() % max, rand() % max);
-    }
-
-  used_logs.push_back (new_log);
-  return new_log;
+  return log_lsa (rand() % MAX_RAND, rand() % MAX_RAND);
 }
 
 void
@@ -210,10 +197,7 @@ test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
   REQUIRE (before.m_start_redo_lsa == after.m_start_redo_lsa);
   REQUIRE (before.m_snapshot_lsa == after.m_snapshot_lsa);
 
-  REQUIRE (before.m_trans.size() == after.m_trans.size());
   REQUIRE (before.m_trans == after.m_trans);
-
-  REQUIRE (before.m_sysops.size() == after.m_sysops.size());
   REQUIRE (before.m_sysops == after.m_sysops);
 
   REQUIRE (before.m_has_2pc == after.m_has_2pc);
@@ -545,6 +529,3 @@ namespace cubpacking
   }
 
 }
-
-
-
