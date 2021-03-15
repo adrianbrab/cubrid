@@ -11,8 +11,8 @@ namespace cublog
   log_lsa_size (LOG_LSA log, cubpacking::packer &serializator, std::size_t start_offset, std::size_t size_arg)
   {
     size_t size = size_arg;
-    size += serializator.get_packed_bigint_size (size);
-    size += serializator.get_packed_short_size (size);
+    size += serializator.get_packed_bigint_size (start_offset + size);
+    size += serializator.get_packed_short_size (start_offset + size);
 
     return size;
   }
@@ -56,7 +56,7 @@ namespace cublog
 	log_lsa_pack (tran_info.savept_lsa, serializator);
 	log_lsa_pack (tran_info.tail_topresult_lsa, serializator);
 	log_lsa_pack (tran_info.start_postpone_lsa, serializator);
-	serializator.pack_c_string (tran_info.user_name, strlen (tran_info.user_name) - 1);
+	serializator.pack_c_string (tran_info.user_name, strlen (tran_info.user_name));
       }
 
     serializator.pack_bigint (m_sysops.size ());
@@ -124,12 +124,12 @@ namespace cublog
     size = log_lsa_size (m_start_redo_lsa, serializator, start_offset, size);
     size = log_lsa_size (m_snapshot_lsa, serializator, start_offset, size);
 
-    size += serializator.get_packed_bigint_size (size);
+    size += serializator.get_packed_bigint_size (start_offset + size);
     for (const checkpoint_tran_info tran_info : m_trans)
       {
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (start_offset + size);
+	size += serializator.get_packed_int_size (start_offset + size);
+	size += serializator.get_packed_int_size (start_offset + size);
 
 	size = log_lsa_size (tran_info.head_lsa, serializator, start_offset, size);
 	size = log_lsa_size (tran_info.tail_lsa, serializator, start_offset, size);
@@ -142,15 +142,15 @@ namespace cublog
 	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name), size);
       }
 
-    size += serializator.get_packed_bigint_size (size);
+    size += serializator.get_packed_bigint_size (start_offset + size);
     for (const checkpoint_sysop_info sysop_info : m_sysops)
       {
-	size += serializator.get_packed_int_size (size);
+	size += serializator.get_packed_int_size (start_offset + size);
 	size = log_lsa_size (sysop_info.sysop_start_postpone_lsa, serializator, start_offset, size);
 	size = log_lsa_size (sysop_info.atomic_sysop_start_lsa, serializator, start_offset, size);
       }
 
-    size += serializator.get_packed_bool_size (size);
+    size += serializator.get_packed_bool_size (start_offset + size);
 
     return size;
   }

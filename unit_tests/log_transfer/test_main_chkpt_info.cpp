@@ -35,6 +35,7 @@ class test_env_chkpt
 {
   public:
     test_env_chkpt ();
+    test_env_chkpt (int size_trans, int size_sysops);
     ~test_env_chkpt ();
 
     LOG_LSA generate_log_lsa();
@@ -43,59 +44,103 @@ class test_env_chkpt
     std::vector<LOG_LSA> used_logs;
 
     const int max = 32700;
-    static void require_equal (checkpoint_info *before, checkpoint_info *after);
+    static void require_equal (checkpoint_info before, checkpoint_info after);
 
-    checkpoint_info *before;
-    checkpoint_info *after;
+    checkpoint_info before;
+    checkpoint_info after;
   private:
 
 };
 
-TEST_CASE ("Test pack/unpack checkpoint_info class", "")
+TEST_CASE ("Test pack/unpack checkpoint_info class 1", "")
 {
-  test_env_chkpt *env = new test_env_chkpt ();
+  test_env_chkpt env {100, 100};
 
-  cubpacking::packer *pac = new cubpacking::packer();
-  size_t size = env->before->get_packed_size (*pac, 0);
-  char buffer[size + 1];
-  pac->set_buffer (buffer, size);
-  env->before->pack (*pac);
+  cubpacking::packer pac;
+  size_t size = env.before.get_packed_size (pac, 0);
+  char buffer[size];
+  pac.set_buffer (buffer, size);
+  env.before.pack (pac);
 
-  cubpacking::unpacker *unpac = new cubpacking::unpacker();
-  unpac->set_buffer (buffer, size);
-  env->after->unpack (*unpac);
+  cubpacking::unpacker unpac;
+  unpac.set_buffer (buffer, size);
+  env.after.unpack (unpac);
 
-  env->require_equal (env->before, env->after);
+  env.require_equal (env.before, env.after);
 }
 
-test_env_chkpt::test_env_chkpt ()
+TEST_CASE ("Test pack/unpack checkpoint_info class 2", "")
+{
+  test_env_chkpt env {0, 100};
+
+  cubpacking::packer pac;
+  size_t size = env.before.get_packed_size (pac, 0);
+  char buffer[size];
+  pac.set_buffer (buffer, size);
+  env.before.pack (pac);
+
+  cubpacking::unpacker unpac;
+  unpac.set_buffer (buffer, size);
+  env.after.unpack (unpac);
+
+  env.require_equal (env.before, env.after);
+}
+
+TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
+{
+  test_env_chkpt env {220, 80};
+
+  cubpacking::packer pac;
+  size_t size = env.before.get_packed_size (pac, 0);
+  size += env.before.get_packed_size (pac, size);
+  char buffer[size];
+  pac.set_buffer (buffer, size);
+  env.before.pack (pac);
+  env.before.pack (pac);
+
+  cubpacking::unpacker unpac;
+  unpac.set_buffer (buffer, size);
+  env.after.unpack (unpac);
+  env.require_equal (env.before, env.after);
+
+  checkpoint_info after_2;
+
+  after_2.unpack (unpac);
+
+  env.require_equal (env.after, after_2);
+
+}
+
+test_env_chkpt::test_env_chkpt () : test_env_chkpt (100, 100)
+{
+}
+
+test_env_chkpt::test_env_chkpt (int size_trans, int size_sysops)
 {
   srand (time (0));
-  before = new checkpoint_info ();
-  after  = new checkpoint_info ();
 
   log_lsa log_to_add = this->generate_log_lsa();
-  before->m_start_redo_lsa = log_to_add;
+  before.m_start_redo_lsa = log_to_add;
 
   log_to_add = this->generate_log_lsa();
-  before->m_snapshot_lsa = log_to_add;
+  before.m_snapshot_lsa = log_to_add;
 
   LOG_INFO_CHKPT_TRANS chkpt_trans_to_add;
   LOG_INFO_CHKPT_SYSOP chkpt_sysop_to_add;
 
-  for (int i = 0; i < 100; i++)
+  for (int i = 0; i < size_trans; i++)
     {
       chkpt_trans_to_add = generate_log_info_chkpt_trans();
-      before->m_trans.push_back (chkpt_trans_to_add);
+      before.m_trans.push_back (chkpt_trans_to_add);
     }
 
-  for (int i = 0; i < 100; i++)
+  for (int i = 0; i < size_sysops; i++)
     {
       chkpt_sysop_to_add = generate_log_info_chkpt_sysop();
-      before->m_sysops.push_back (chkpt_sysop_to_add);
+      before.m_sysops.push_back (chkpt_sysop_to_add);
     }
 
-  before->m_has_2pc = rand() % 2;
+  before.m_has_2pc = rand() % 2;
 }
 
 test_env_chkpt::~test_env_chkpt ()
@@ -159,22 +204,22 @@ test_env_chkpt::generate_log_lsa()
 }
 
 void
-test_env_chkpt::require_equal (checkpoint_info *before, checkpoint_info *after)
+test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
 {
-  REQUIRE (before->m_start_redo_lsa == after->m_start_redo_lsa);
-  REQUIRE (before->m_snapshot_lsa == after->m_snapshot_lsa);
+  REQUIRE (before.m_start_redo_lsa == after.m_start_redo_lsa);
+  REQUIRE (before.m_snapshot_lsa == after.m_snapshot_lsa);
 
-  REQUIRE (before->m_trans.size() == after->m_trans.size());
-  REQUIRE (before->m_trans == after->m_trans);
+  REQUIRE (before.m_trans.size() == after.m_trans.size());
+  REQUIRE (before.m_trans == after.m_trans);
 
-  REQUIRE (before->m_sysops.size() == after->m_sysops.size());
-  REQUIRE (before->m_sysops == after->m_sysops);
+  REQUIRE (before.m_sysops.size() == after.m_sysops.size());
+  REQUIRE (before.m_sysops == after.m_sysops);
 
-  REQUIRE (before->m_has_2pc == after->m_has_2pc);
+  REQUIRE (before.m_has_2pc == after.m_has_2pc);
 }
 
 //
-// Definitions of CUBRID stuff that is not used, but is needed by the linker
+// Definitions of CUBRID stuff that is used and cannot be included
 //
 
 #include "dbtype_def.h"
