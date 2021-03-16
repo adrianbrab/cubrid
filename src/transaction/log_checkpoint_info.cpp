@@ -151,7 +151,7 @@ namespace cublog
 	size = log_lsa_size (tran_info.savept_lsa, serializator, start_offset, size);
 	size = log_lsa_size (tran_info.tail_topresult_lsa, serializator, start_offset, size);
 	size = log_lsa_size (tran_info.start_postpone_lsa, serializator, start_offset, size);
-	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name),start_offset + size);
+	size += serializator.get_packed_c_string_size (tran_info.user_name, strlen (tran_info.user_name), start_offset + size);
       }
 
     size += serializator.get_packed_bigint_size (start_offset + size);
