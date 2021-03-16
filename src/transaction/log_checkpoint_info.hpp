@@ -46,8 +46,7 @@ namespace cublog
       void recovery_2pc_analysis () const;	      // if m_has_2pc, also do 2pc analysis
 
       const log_lsa &get_snapshot_lsa () const;	      // the LSA of loaded snapshot
-      const log_lsa &get_start_redo_lsa ()
-      const;     // the LSA of starting redo. min of checkpoint LSA and oldest unflushed LSA.
+      const log_lsa &get_start_redo_lsa () const;     // the LSA of starting redo (min LSA of checkpoint and oldest unflushed)
       void set_start_redo_lsa (const log_lsa &start_redo_lsa);
 
     private:

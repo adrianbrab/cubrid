@@ -117,7 +117,7 @@ test_env_chkpt::test_env_chkpt () : test_env_chkpt (100, 100)
 
 test_env_chkpt::test_env_chkpt (int size_trans, int size_sysops)
 {
-  srand (time (0));
+  std::srand (time (0));
   before.m_start_redo_lsa = this->generate_log_lsa();
   before.m_snapshot_lsa = this->generate_log_lsa();
 
@@ -136,7 +136,7 @@ test_env_chkpt::test_env_chkpt (int size_trans, int size_sysops)
       before.m_sysops.push_back (chkpt_sysop_to_add);
     }
 
-  before.m_has_2pc = rand() % 2;
+  before.m_has_2pc = std::rand() % 2;
 }
 
 test_env_chkpt::~test_env_chkpt ()
@@ -148,9 +148,9 @@ test_env_chkpt::generate_log_info_chkpt_trans()
 {
   LOG_INFO_CHKPT_TRANS chkpt_trans;
 
-  chkpt_trans.isloose_end = rand() % 2; // can be true or false
-  chkpt_trans.trid        = rand() % MAX_RAND;
-  chkpt_trans.state       = static_cast<TRAN_STATE> (rand() % TRAN_UNACTIVE_UNKNOWN);
+  chkpt_trans.isloose_end = std::rand() % 2; // can be true or false
+  chkpt_trans.trid        = std::rand() % MAX_RAND;
+  chkpt_trans.state       = static_cast<TRAN_STATE> (std::rand() % TRAN_UNACTIVE_UNKNOWN);
 
   chkpt_trans.head_lsa    = generate_log_lsa();
   chkpt_trans.tail_lsa    = generate_log_lsa();
@@ -161,13 +161,13 @@ test_env_chkpt::generate_log_info_chkpt_trans()
   chkpt_trans.tail_topresult_lsa  = generate_log_lsa();
   chkpt_trans.start_postpone_lsa  = generate_log_lsa();
 
-  int length = rand() % LOG_USERNAME_MAX;
+  int length = std::rand() % LOG_USERNAME_MAX;
 
   length = std::min (5, length);
 
   for (int i = 0; i < length; i++)
     {
-      chkpt_trans.user_name[i] = 'A' + rand() % 20;
+      chkpt_trans.user_name[i] = 'A' + std::rand() % 20;
     }
 
   return chkpt_trans;
@@ -178,7 +178,7 @@ test_env_chkpt::generate_log_info_chkpt_sysop()
 {
   LOG_INFO_CHKPT_SYSOP chkpt_sysop;
 
-  chkpt_sysop.trid                      = rand() % MAX_RAND;
+  chkpt_sysop.trid                      = std::rand() % MAX_RAND;
   chkpt_sysop.sysop_start_postpone_lsa  = generate_log_lsa();
   chkpt_sysop.atomic_sysop_start_lsa    = generate_log_lsa();
 
@@ -188,7 +188,7 @@ test_env_chkpt::generate_log_info_chkpt_sysop()
 LOG_LSA
 test_env_chkpt::generate_log_lsa()
 {
-  return log_lsa (rand() % MAX_RAND, rand() % MAX_RAND);
+  return log_lsa (std::rand() % MAX_RAND, std::rand() % MAX_RAND);
 }
 
 void
