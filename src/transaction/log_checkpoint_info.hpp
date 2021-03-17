@@ -16,10 +16,10 @@
  *
  */
 
-#include "log_page
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_record.hpp"
+#include "memory_alloc.h"
 #include "packable_object.hpp"
 #include "transaction_global.hpp"
 

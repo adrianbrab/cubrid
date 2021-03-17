@@ -214,7 +214,7 @@ namespace cublog
   }
 
   int
-  logpb_checkpoint_topops (THREAD_ENTRY *thread_p, LOG_INFO_CHKPT_SYSOP*&chkpt_topops,
+  logpb_checkpoint_topops (THREAD_ENTRY *thread_p, LOG_INFO_CHKPT_SYSOP *&chkpt_topops,
 			   LOG_INFO_CHKPT_TRANS *chkpt_trans, LOG_REC_CHKPT &tmp_chkpt, log_tdes *tdes, int &ntops,
 			   size_t &length_all_tops)
   {
@@ -257,7 +257,7 @@ namespace cublog
     LOG_TDES *tdes;		/* System transaction descriptor */
     LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
     LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
-    int i, ntrans, ntops, length_all_chkpt_trans, length_all_tops, error_code;
+    int i, ntrans, ntops, length_all_chkpt_trans, error_code;
     LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
     LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
     LOG_PRIOR_NODE *node;
@@ -266,10 +266,11 @@ namespace cublog
     LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
     LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone */
     LOG_LSA smallest_lsa;
+    size_t length_all_tops = 0;
 
     (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
     LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-    LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
+    LSA_COPY (&m_start_redo_lsa, &log_Gl.chkpt_redo_lsa);
     pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
 
     logpb_flush_pages_direct (thread_p);
@@ -299,7 +300,7 @@ namespace cublog
 	act_tdes = LOG_FIND_TDES (i);
 	assert (ntrans < tmp_chkpt.ntrans);
 	logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa);
-	m_trans.push_back (chkpt_trans);
+	m_trans.push_back (*chkpt_trans);
       }
 
 
@@ -350,7 +351,7 @@ namespace cublog
 	      {
 		return;
 	      }
-	    m_sysops.push_back (chkpt_topops);
+	    m_sysops.push_back (*chkpt_topops);
 	  }
       }
     else

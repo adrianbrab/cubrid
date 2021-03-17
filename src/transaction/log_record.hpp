@@ -32,7 +32,7 @@
 #include "storage_common.h"
 #include "system.h"
 
-#include <string.h>
+#include <cstring>
 
 enum log_rectype
 {
