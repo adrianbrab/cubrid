@@ -44,7 +44,7 @@ class test_env_chkpt
     LOG_INFO_CHKPT_SYSOP generate_log_info_chkpt_sysop();
     std::vector<LOG_LSA> used_logs;
 
-    constexpr int MAX_RAND = 32700;
+    static constexpr int MAX_RAND = 32700;
     static void require_equal (checkpoint_info before, checkpoint_info after);
 
     checkpoint_info before;
