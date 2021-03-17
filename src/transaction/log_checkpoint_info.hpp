@@ -21,7 +21,9 @@
 #include "log_record.hpp"
 #include "memory_alloc.h"
 #include "packable_object.hpp"
+#include "page_buffer.h"
 #include "transaction_global.hpp"
+#include "system_parameter.h"
 
 //
 // log_checkpoint_info.hpp - the information saved during log checkpoint and used for recovery

@@ -254,10 +254,13 @@ namespace cublog
   void
   checkpoint_info::load_trantable_snapshot (THREAD_ENTRY *thread_p)
   {
+    bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
+#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
+
     LOG_TDES *tdes;		/* System transaction descriptor */
     LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
     LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
-    int i, ntrans, ntops, length_all_chkpt_trans, error_code;
+    int i, ntrans, ntops, length_all_chkpt_trans, error_code, flushed_page_cnt;
     LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
     LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
     LOG_PRIOR_NODE *node;
@@ -268,10 +271,12 @@ namespace cublog
     LOG_LSA smallest_lsa;
     size_t length_all_tops = 0;
 
+#if defined(SERVER_MODE)
     (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
     LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-    LSA_COPY (&m_start_redo_lsa, &log_Gl.chkpt_redo_lsa);
+    LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
     pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
+#endif
 
     logpb_flush_pages_direct (thread_p);
 
@@ -285,6 +290,24 @@ namespace cublog
     newchkpt_lsa = prior_lsa_next_record (thread_p, node, tdes);
     assert (!LSA_ISNULL (&newchkpt_lsa));
 
+    detailed_er_log ("logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
+    if (logtb_reflect_global_unique_stats_to_btree (thread_p) != NO_ERROR)
+      {
+	return;
+      }
+
+    detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
+    if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
+	NO_ERROR)
+      {
+	return;
+      }
+
+    detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
+    if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
+      {
+	return;
+      }
 
     LSA_SET_NULL (&smallest_lsa);
     for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
@@ -303,6 +326,7 @@ namespace cublog
 	m_trans.push_back (*chkpt_trans);
       }
 
+    m_start_redo_lsa = std::min (chkpt_redo_lsa, smallest_lsa);
 
     /*
      * Reset the structure to the correct number of transactions and
