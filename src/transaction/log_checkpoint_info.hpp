@@ -16,6 +16,7 @@
  *
  */
 
+#include "client_credentials.hpp"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_record.hpp"

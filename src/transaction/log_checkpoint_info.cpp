@@ -227,20 +227,20 @@ namespace cublog
 	 *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
 	 *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
 	 */
-	if (ntops >= tmp_chkpt.ntops)
-	  {
-	    tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
-	    length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-	    LOG_INFO_CHKPT_SYSOP *ptr = (LOG_INFO_CHKPT_SYSOP *) realloc (chkpt_topops, length_all_tops);
-	    if (ptr == NULL)
-	      {
-		free_and_init (chkpt_trans);
-		log_Gl.prior_info.prior_lsa_mutex.unlock ();
-		TR_TABLE_CS_EXIT (thread_p);
-		return ER_FAILED;
-	      }
-	    chkpt_topops = ptr;
-	  }
+//	if (ntops >= tmp_chkpt.ntops)
+//	  {
+//	    tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
+//	    length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
+//	    LOG_INFO_CHKPT_SYSOP *ptr = (LOG_INFO_CHKPT_SYSOP *) realloc (chkpt_topops, length_all_tops);
+//	    if (ptr == NULL)
+//	      {
+//		free_and_init (chkpt_trans);
+//		log_Gl.prior_info.prior_lsa_mutex.unlock ();
+//		TR_TABLE_CS_EXIT (thread_p);
+//		return ER_FAILED;
+//	      }
+//	    chkpt_topops = ptr;
+//	  }
 
 	LOG_INFO_CHKPT_SYSOP *chkpt_topop = &chkpt_topops[ntops];
 	chkpt_topop->trid = tdes->trid;
