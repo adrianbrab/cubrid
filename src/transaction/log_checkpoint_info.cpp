@@ -169,7 +169,7 @@ namespace cublog
 
   void
   logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS &chkpt_tran, log_tdes *tdes, int &ntrans, int &ntops,
-			  LOG_LSA &smallest_lsa, std::vector<checkpoint_tran_info> m_trans)
+			  LOG_LSA &smallest_lsa, std::vector<checkpoint_tran_info> *m_trans)
   {
     if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
       {
@@ -210,14 +210,14 @@ namespace cublog
 	    LSA_COPY (&smallest_lsa, &tdes->head_lsa);
 	  }
 
-	m_trans.push_back (chkpt_tran);
+	m_trans->push_back (chkpt_tran);
       }
   }
 
   int
   logpb_checkpoint_topops (THREAD_ENTRY *thread_p, LOG_INFO_CHKPT_SYSOP *&chkpt_topops,
 			   LOG_REC_CHKPT &tmp_chkpt, log_tdes *tdes, int &ntops,
-			   size_t &length_all_tops, std::vector<checkpoint_sysop_info> m_sysops)
+			   size_t &length_all_tops, std::vector<checkpoint_sysop_info> *m_sysops)
   {
     if (tdes != NULL && tdes->trid != NULL_TRANID
 	&& (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa) || !LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)))
@@ -235,8 +235,6 @@ namespace cublog
 	    LOG_INFO_CHKPT_SYSOP *ptr = (LOG_INFO_CHKPT_SYSOP *) realloc (chkpt_topops, length_all_tops);
 	    if (ptr == NULL)
 	      {
-		log_Gl.prior_info.prior_lsa_mutex.unlock ();
-		TR_TABLE_CS_EXIT (thread_p);
 		return ER_FAILED;
 	      }
 	    chkpt_topops = ptr;
@@ -248,7 +246,7 @@ namespace cublog
 	chkpt_topop->atomic_sysop_start_lsa = tdes->rcv.atomic_sysop_start_lsa;
 	ntops++;
 
-	m_sysops.push_back (*chkpt_topop);
+	m_sysops->push_back (*chkpt_topop);
 
       }
     return NO_ERROR;
@@ -294,7 +292,7 @@ namespace cublog
 	  }
 	act_tdes = LOG_FIND_TDES (i);
 	assert (ntrans < tmp_chkpt.ntrans);
-	logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa, m_trans);
+	logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa, &m_trans);
       }
 
     m_start_redo_lsa = std::min (chkpt_redo_lsa, smallest_lsa);
@@ -340,7 +338,7 @@ namespace cublog
 	      }
 	    act_tdes = LOG_FIND_TDES (i);
 	    error_code =
-		    logpb_checkpoint_topops (thread_p, chkpt_topops, tmp_chkpt, act_tdes, ntops, length_all_tops, m_sysops);
+		    logpb_checkpoint_topops (thread_p, chkpt_topops, tmp_chkpt, act_tdes, ntops, length_all_tops, &m_sysops);
 	    if (error_code != NO_ERROR)
 	      {
 		return;
@@ -364,7 +362,7 @@ namespace cublog
     mapper = [thread_p, &chkpt_topops, &tmp_chkpt, &ntops, &length_all_tops, &error_code, this] (log_tdes &tdes)
     {
       error_code =
-	      logpb_checkpoint_topops (thread_p, chkpt_topops, tmp_chkpt, &tdes, ntops, length_all_tops, m_sysops);
+	      logpb_checkpoint_topops (thread_p, chkpt_topops, tmp_chkpt, &tdes, ntops, length_all_tops, &m_sysops);
     };
 
     log_system_tdes::map_all_tdes (mapper);
