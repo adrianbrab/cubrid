@@ -360,9 +360,8 @@ namespace cublog
 	  }
       }
 
-
     // Checkpoint system transactions' topops
-    mapper = [thread_p, &chkpt_topops, &tmp_chkpt, &ntops, &length_all_tops, &error_code] (log_tdes &tdes)
+    mapper = [thread_p, &chkpt_topops, &tmp_chkpt, &ntops, &length_all_tops, &error_code, this] (log_tdes &tdes)
     {
       error_code =
 	      logpb_checkpoint_topops (thread_p, chkpt_topops, tmp_chkpt, &tdes, ntops, length_all_tops, m_sysops);
