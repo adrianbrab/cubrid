@@ -17,9 +17,11 @@
  */
 
 #include "client_credentials.hpp"
+#include "critical_section.h"
 #include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_record.hpp"
+#include "log_system_tran.hpp"
 #include "memory_alloc.h"
 #include "packable_object.hpp"
 #include "page_buffer.h"

@@ -628,3 +628,15 @@ mvcctable::~mvcctable () = default;
 
 log_append_info::log_append_info () = default;
 log_prior_lsa_info::log_prior_lsa_info () = default;
+
+int
+csect_enter (THREAD_ENTRY *thread_p, int cs_index, int wait_secs)
+{
+  assert (false);
+}
+
+void
+log_system_tdes::map_all_tdes (const map_func &func)
+{
+  assert (false);
+}
