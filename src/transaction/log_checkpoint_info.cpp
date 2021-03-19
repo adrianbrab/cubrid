@@ -270,44 +270,12 @@ namespace cublog
     LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone */
     LOG_LSA smallest_lsa;
     size_t length_all_tops = 0;
+    log_system_tdes::map_func mapper;
 
-#if defined(SERVER_MODE)
-    (void) pthread_mutex_lock (&log_Gl.chkpt_lsa_lock);
-    LSA_COPY (&chkpt_lsa, &log_Gl.hdr.chkpt_lsa);
-    LSA_COPY (&chkpt_redo_lsa, &log_Gl.chkpt_redo_lsa);
-    pthread_mutex_unlock (&log_Gl.chkpt_lsa_lock);
-#endif
+    TR_TABLE_CS_ENTER (thread_p);
+    log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-    logpb_flush_pages_direct (thread_p);
-
-    /* MARK THE CHECKPOINT PROCESS */
-    node = prior_lsa_alloc_and_copy_data (thread_p, LOG_START_CHKPT, RV_NOT_DEFINED, NULL, 0, NULL, 0, NULL);
-    if (node == NULL)
-      {
-	return;
-      }
-
-    newchkpt_lsa = prior_lsa_next_record (thread_p, node, tdes);
-    assert (!LSA_ISNULL (&newchkpt_lsa));
-
-    detailed_er_log ("logpb_checkpoint: call logtb_reflect_global_unique_stats_to_btree()\n");
-    if (logtb_reflect_global_unique_stats_to_btree (thread_p) != NO_ERROR)
-      {
-	return;
-      }
-
-    detailed_er_log ("logpb_checkpoint: call pgbuf_flush_checkpoint()\n");
-    if (pgbuf_flush_checkpoint (thread_p, &newchkpt_lsa, &chkpt_redo_lsa, &tmp_chkpt.redo_lsa, &flushed_page_cnt) !=
-	NO_ERROR)
-      {
-	return;
-      }
-
-    detailed_er_log ("logpb_checkpoint: call fileio_synchronize_all()\n");
-    if (fileio_synchronize_all (thread_p, false) != NO_ERROR)
-      {
-	return;
-      }
+    /* CHECKPOINT THE TRANSACTION TABLE */
 
     LSA_SET_NULL (&smallest_lsa);
     for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
@@ -391,6 +359,21 @@ namespace cublog
 	    return;
 	  }
       }
+
+
+    // Checkpoint system transactions' topops
+    mapper = [thread_p, &chkpt_topops, &chkpt_trans, &tmp_chkpt, &ntops, &length_all_tops, &error_code] (log_tdes &tdes)
+    {
+      error_code =
+	      logpb_checkpoint_topops (thread_p, chkpt_topops, chkpt_trans, tmp_chkpt, &tdes, ntops, length_all_tops);
+    };
+
+    log_system_tdes::map_all_tdes (mapper);
+
+
+    log_Gl.prior_info.prior_lsa_mutex.unlock ();
+
+    TR_TABLE_CS_EXIT (thread_p);
   }
 
 }

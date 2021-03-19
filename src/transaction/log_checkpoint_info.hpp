@@ -24,6 +24,7 @@
 #include "packable_object.hpp"
 #include "page_buffer.h"
 #include "transaction_global.hpp"
+#include "thread_entry.hpp"
 #include "system_parameter.h"
 
 //

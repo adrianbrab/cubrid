@@ -207,6 +207,7 @@ test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
 // Definitions of CUBRID stuff that is used and cannot be included
 //
 
+#include "log_impl.h"
 #include "dbtype_def.h"
 #include "packer.hpp"
 #include "memory_alloc.h"
@@ -217,7 +218,6 @@ test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
 
 namespace cubpacking
 {
-
   void
   packer::align (const size_t req_alignment)
   {
@@ -527,5 +527,104 @@ namespace cubpacking
   {
     // all pointers are initialized to NULL
   }
-
 }
+
+//unused stuff needed by the linker
+log_global log_Gl;
+
+bool
+prm_get_bool_value (PARAM_ID prmid)
+{
+  return false;
+}
+
+const char *
+clientids::get_db_user () const
+{
+  char *c;
+  return c;
+}
+
+LOG_PRIOR_NODE *
+prior_lsa_alloc_and_copy_data (THREAD_ENTRY *thread_p, LOG_RECTYPE rec_type, LOG_RCVINDEX rcvindex,
+			       LOG_DATA_ADDR *addr, int ulength, const char *udata, int rlength, const char *rdata)
+{
+  assert (false);
+}
+
+LOG_LSA
+prior_lsa_next_record (THREAD_ENTRY *thread_p, LOG_PRIOR_NODE *node, log_tdes *tdes)
+{
+  assert (false);
+}
+
+void
+_er_log_debug (const char *file_name, const int line_no, const char *fmt, ...)
+{
+  assert (false);
+}
+
+int
+logtb_reflect_global_unique_stats_to_btree (THREAD_ENTRY *thread_p)
+{
+  assert (false);
+}
+
+int
+pgbuf_flush_checkpoint (THREAD_ENTRY *thread_p, const LOG_LSA *flush_upto_lsa, const LOG_LSA *prev_chkpt_redo_lsa,
+			LOG_LSA *smallest_lsa, int *flushed_page_cnt)
+{
+  assert (false);
+}
+
+int
+fileio_synchronize_all (THREAD_ENTRY *thread_p, bool include_log)
+{
+  assert (false);
+}
+
+int
+csect_exit (THREAD_ENTRY *thread_p, int cs_index)
+{
+  assert (false);
+}
+
+void
+logpb_flush_pages_direct (THREAD_ENTRY *thread_p)
+{
+  assert (false);
+}
+
+LOG_TDES *
+logtb_get_system_tdes (THREAD_ENTRY *thread_p)
+{
+  assert (false);
+}
+
+log_global::log_global ()
+  : m_prior_recver (prior_info)
+{
+}
+
+log_global::~log_global ()
+{
+}
+
+namespace cublog
+{
+  prior_recver::prior_recver (log_prior_lsa_info &prior_lsa_info)
+    : m_prior_lsa_info (prior_lsa_info)
+  {
+  }
+  prior_recver::~prior_recver () = default;
+}
+
+mvcc_active_tran::mvcc_active_tran () = default;
+mvcc_active_tran::~mvcc_active_tran () = default;
+mvcc_trans_status::mvcc_trans_status () = default;
+mvcc_trans_status::~mvcc_trans_status () = default;
+mvcctable::mvcctable () = default;
+mvcctable::~mvcctable () = default;
+
+log_append_info::log_append_info () = default;
+log_prior_lsa_info::log_prior_lsa_info () = default;
