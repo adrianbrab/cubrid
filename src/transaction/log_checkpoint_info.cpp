@@ -16,15 +16,19 @@
  *
  */
 
+#include "log_checkpoint_info.hpp"
+
 #include "log_impl.h"
 #include "client_credentials.hpp"
 #include "critical_section.h"
 #include "memory_alloc.h"
+#include "page_buffer.h"
 #include "transaction_global.hpp"
 #include "thread_entry.hpp"
 #include "scope_exit.hpp"
+#include "system_parameter.h"
 
-#include "log_checkpoint_info.hpp"
+#include <cstring>
 
 namespace cublog
 {

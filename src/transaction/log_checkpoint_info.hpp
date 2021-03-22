@@ -17,10 +17,9 @@
  */
 
 #include "log_lsa.hpp"
+#include "log_record.hpp"
 #include "log_system_tran.hpp"
 #include "packable_object.hpp"
-#include "page_buffer.h"
-#include "system_parameter.h"
 
 #include <vector>
 

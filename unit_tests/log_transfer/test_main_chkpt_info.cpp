@@ -24,6 +24,7 @@
 #undef private
 #include "log_lsa.hpp"
 #include "log_record.hpp"
+#include "system_parameter.h"
 
 #include <algorithm>
 #include <vector>
@@ -541,8 +542,7 @@ prm_get_bool_value (PARAM_ID prmid)
 const char *
 clientids::get_db_user () const
 {
-  char *c;
-  return c;
+  return nullptr;
 }
 
 LOG_PRIOR_NODE *
