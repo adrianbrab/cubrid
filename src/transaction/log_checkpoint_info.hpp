@@ -16,18 +16,13 @@
  *
  */
 
-#include "client_credentials.hpp"
-#include "critical_section.h"
-#include "log_impl.h"
 #include "log_lsa.hpp"
-#include "log_record.hpp"
 #include "log_system_tran.hpp"
-#include "memory_alloc.h"
 #include "packable_object.hpp"
 #include "page_buffer.h"
-#include "transaction_global.hpp"
-#include "thread_entry.hpp"
 #include "system_parameter.h"
+
+#include <vector>
 
 //
 // log_checkpoint_info.hpp - the information saved during log checkpoint and used for recovery
@@ -49,7 +44,8 @@ namespace cublog
       void unpack (cubpacking::unpacker &deserializator) override;
       size_t get_packed_size (cubpacking::packer &serializator, std::size_t start_offset) const override;
 
-      void load_trantable_snapshot (THREAD_ENTRY *thread_p);		       // with tran table and prior lock, save snapshot LSA and
+      // with tran table and prior lock, save snapshot LSA and
+      void load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa);
       // get trans/sysops info from transaction table
       void recovery_analysis (log_lsa &start_redo_lsa) const;	  // restore transaction table based on checkpoint info
       void recovery_2pc_analysis () const;	      // if m_has_2pc, also do 2pc analysis
@@ -59,6 +55,9 @@ namespace cublog
       void set_start_redo_lsa (const log_lsa &start_redo_lsa);
 
     private:
+      void load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa);
+      void load_checkpoint_topop (log_tdes &tdes);
+
       log_lsa m_start_redo_lsa;
       log_lsa m_snapshot_lsa;
       std::vector<checkpoint_tran_info> m_trans;

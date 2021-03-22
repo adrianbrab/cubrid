@@ -16,6 +16,14 @@
  *
  */
 
+#include "log_impl.h"
+#include "client_credentials.hpp"
+#include "critical_section.h"
+#include "memory_alloc.h"
+#include "transaction_global.hpp"
+#include "thread_entry.hpp"
+#include "scope_exit.hpp"
+
 #include "log_checkpoint_info.hpp"
 
 namespace cublog
@@ -168,16 +176,19 @@ namespace cublog
   }
 
   void
-  logpb_checkpoint_trans (LOG_INFO_CHKPT_TRANS &chkpt_tran, log_tdes *tdes, int &ntrans, int &ntops,
-			  LOG_LSA &smallest_lsa, std::vector<checkpoint_tran_info> *m_trans)
+  checkpoint_info::load_checkpoint_trans (log_tdes &tdes, LOG_LSA &smallest_lsa)
   {
-    if (tdes != NULL && tdes->trid != NULL_TRANID && !LSA_ISNULL (&tdes->tail_lsa))
+    if (tdes.trid != NULL_TRANID && !LSA_ISNULL (&tdes.tail_lsa))
       {
-	chkpt_tran.isloose_end = tdes->isloose_end;
-	chkpt_tran.trid = tdes->trid;
-	chkpt_tran.state = tdes->state;
-	LSA_COPY (&chkpt_tran.head_lsa, &tdes->head_lsa);
-	LSA_COPY (&chkpt_tran.tail_lsa, &tdes->tail_lsa);
+	m_trans.emplace_back ();
+	LOG_INFO_CHKPT_TRANS &chkpt_tran = m_trans.back ();
+
+	chkpt_tran.isloose_end = tdes.isloose_end;
+	chkpt_tran.trid = tdes.trid;
+	chkpt_tran.state = tdes.state;
+
+	LSA_COPY (&chkpt_tran.head_lsa, &tdes.head_lsa);
+	LSA_COPY (&chkpt_tran.tail_lsa, &tdes.tail_lsa);
 	if (chkpt_tran.state == TRAN_UNACTIVE_ABORTED)
 	  {
 	    /*
@@ -187,40 +198,31 @@ namespace cublog
 	     * record which is likely a compensating one, and find where to
 	     * continue a rollback operation.
 	     */
-	    LSA_COPY (&chkpt_tran.undo_nxlsa, &tdes->tail_lsa);
+	    LSA_COPY (&chkpt_tran.undo_nxlsa, &tdes.tail_lsa);
 	  }
 	else
 	  {
-	    LSA_COPY (&chkpt_tran.undo_nxlsa, &tdes->undo_nxlsa);
+	    LSA_COPY (&chkpt_tran.undo_nxlsa, &tdes.undo_nxlsa);
 	  }
 
-	LSA_COPY (&chkpt_tran.posp_nxlsa, &tdes->posp_nxlsa);
-	LSA_COPY (&chkpt_tran.savept_lsa, &tdes->savept_lsa);
-	LSA_COPY (&chkpt_tran.tail_topresult_lsa, &tdes->tail_topresult_lsa);
-	LSA_COPY (&chkpt_tran.start_postpone_lsa, &tdes->rcv.tran_start_postpone_lsa);
-	strncpy (chkpt_tran.user_name, tdes->client.get_db_user (), LOG_USERNAME_MAX);
-	ntrans++;
-	if (tdes->topops.last >= 0 && (tdes->state == TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE))
+	LSA_COPY (&chkpt_tran.posp_nxlsa, &tdes.posp_nxlsa);
+	LSA_COPY (&chkpt_tran.savept_lsa, &tdes.savept_lsa);
+	LSA_COPY (&chkpt_tran.tail_topresult_lsa, &tdes.tail_topresult_lsa);
+	LSA_COPY (&chkpt_tran.start_postpone_lsa, &tdes.rcv.tran_start_postpone_lsa);
+	std::strncpy (chkpt_tran.user_name, tdes.client.get_db_user (), LOG_USERNAME_MAX);
+
+	if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes.head_lsa))
 	  {
-	    ntops += tdes->topops.last + 1;
+	    LSA_COPY (&smallest_lsa, &tdes.head_lsa);
 	  }
-
-	if (LSA_ISNULL (&smallest_lsa) || LSA_GT (&smallest_lsa, &tdes->head_lsa))
-	  {
-	    LSA_COPY (&smallest_lsa, &tdes->head_lsa);
-	  }
-
-	m_trans->push_back (chkpt_tran);
       }
   }
 
-  int
-  logpb_checkpoint_topops (THREAD_ENTRY *thread_p, LOG_INFO_CHKPT_SYSOP *&chkpt_topops,
-			   LOG_REC_CHKPT &tmp_chkpt, log_tdes *tdes, int &ntops,
-			   size_t &length_all_tops, std::vector<checkpoint_sysop_info> *m_sysops)
+  void
+  checkpoint_info::load_checkpoint_topop (log_tdes &tdes)
   {
-    if (tdes != NULL && tdes->trid != NULL_TRANID
-	&& (!LSA_ISNULL (&tdes->rcv.sysop_start_postpone_lsa) || !LSA_ISNULL (&tdes->rcv.atomic_sysop_start_lsa)))
+    if (tdes.trid != NULL_TRANID && (!LSA_ISNULL (&tdes.rcv.sysop_start_postpone_lsa)
+				     || !LSA_ISNULL (&tdes.rcv.atomic_sysop_start_lsa)))
       {
 	/* this transaction is running system operation postpone or an atomic system operation
 	 * note: we cannot compare tdes->state with TRAN_UNACTIVE_TOPOPE_COMMITTED_WITH_POSTPONE. we are
@@ -228,59 +230,35 @@ namespace cublog
 	 *       however, setting tdes->rcv.sysop_start_postpone_lsa is protected by
 	 *       log_Gl.prior_info.prior_lsa_mutex. so we check this instead of state.
 	 */
-	if (ntops >= tmp_chkpt.ntops)
-	  {
-	    tmp_chkpt.ntops += log_Gl.trantable.num_assigned_indices;
-	    length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-	    LOG_INFO_CHKPT_SYSOP *ptr = (LOG_INFO_CHKPT_SYSOP *) realloc (chkpt_topops, length_all_tops);
-	    if (ptr == NULL)
-	      {
-		return ER_FAILED;
-	      }
-	    chkpt_topops = ptr;
-	  }
-
-	LOG_INFO_CHKPT_SYSOP *chkpt_topop = &chkpt_topops[ntops];
-	chkpt_topop->trid = tdes->trid;
-	chkpt_topop->sysop_start_postpone_lsa = tdes->rcv.sysop_start_postpone_lsa;
-	chkpt_topop->atomic_sysop_start_lsa = tdes->rcv.atomic_sysop_start_lsa;
-	ntops++;
-
-	m_sysops->push_back (*chkpt_topop);
-
+	m_sysops.emplace_back();
+	LOG_INFO_CHKPT_SYSOP &chkpt_topop = m_sysops.back();
+	chkpt_topop.trid = tdes.trid;
+	chkpt_topop.sysop_start_postpone_lsa = tdes.rcv.sysop_start_postpone_lsa;
+	chkpt_topop.atomic_sysop_start_lsa = tdes.rcv.atomic_sysop_start_lsa;
       }
-    return NO_ERROR;
   }
 
   void
-  checkpoint_info::load_trantable_snapshot (THREAD_ENTRY *thread_p)
+  checkpoint_info::load_trantable_snapshot (THREAD_ENTRY *thread_p, LOG_LSA &smallest_lsa)
   {
-    bool detailed_logging = prm_get_bool_value (PRM_ID_LOG_CHKPT_DETAILED);
-#define detailed_er_log(...) if (detailed_logging) _er_log_debug (ARG_FILE_LINE, __VA_ARGS__)
 
-    LOG_TDES *tdes;		/* System transaction descriptor */
     LOG_TDES *act_tdes;		/* Transaction descriptor of an active transaction */
-    LOG_REC_CHKPT *chkpt, tmp_chkpt;	/* Checkpoint log records */
-    int i, ntrans, ntops, length_all_chkpt_trans, error_code, flushed_page_cnt;
-    LOG_LSA chkpt_lsa;		/* copy of log_Gl.hdr.chkpt_lsa */
-    LOG_LSA chkpt_redo_lsa;	/* copy of log_Gl.chkpt_redo_lsa */
-    LOG_PRIOR_NODE *node;
-    LOG_LSA newchkpt_lsa;	/* New address of the checkpoint record */
-    LOG_INFO_CHKPT_TRANS chkpt_trans;	/* Checkpoint tdes */
-    LOG_INFO_CHKPT_TRANS *chkpt_one;	/* Checkpoint tdes for one tran */
-    LOG_INFO_CHKPT_SYSOP *chkpt_topops;	/* Checkpoint top system operations that are in commit postpone */
-    LOG_LSA smallest_lsa;
-    size_t length_all_tops = 0;
+    int i;
     log_system_tdes::map_func mapper;
 
     //ENTER the critical section
     TR_TABLE_CS_ENTER (thread_p);
     log_Gl.prior_info.prior_lsa_mutex.lock ();
 
-    /* CHECKPOINT THE TRANSACTION TABLE */
+    scope_exit <std::function<void (void)>> unlock_on_exit ([thread_p] ()
+    {
+      log_Gl.prior_info.prior_lsa_mutex.lock ();
+      TR_TABLE_CS_EXIT (thread_p);
+    });
 
+    /* CHECKPOINT THE TRANSACTION TABLE */
     LSA_SET_NULL (&smallest_lsa);
-    for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
+    for (i = 0; i < log_Gl.trantable.num_total_indices; i++)
       {
 	/*
 	 * Don't checkpoint current system transaction. That is, the one of
@@ -291,85 +269,17 @@ namespace cublog
 	    continue;
 	  }
 	act_tdes = LOG_FIND_TDES (i);
-	assert (ntrans < tmp_chkpt.ntrans);
-	logpb_checkpoint_trans (chkpt_trans, act_tdes, ntrans, ntops, smallest_lsa, &m_trans);
-      }
-
-    m_start_redo_lsa = std::min (chkpt_redo_lsa, smallest_lsa);
-
-    /*
-     * Reset the structure to the correct number of transactions and
-     * recalculate the length
-     */
-    tmp_chkpt.ntrans = ntrans;
-    length_all_chkpt_trans = sizeof (chkpt_trans) * tmp_chkpt.ntrans;
-
-    /*
-     * Scan again if there were any top system operations in the process of being committed.
-     * NOTE that we checkpoint top system operations only when there are in the
-     * process of commit. Not knowledge of top system operations that are not
-     * in the process of commit is required since if there is a crash, the system
-     * operation is aborted as part of the transaction.
-     */
-
-    chkpt_topops = NULL;
-    if (ntops > 0)
-      {
-	tmp_chkpt.ntops = log_Gl.trantable.num_assigned_indices;
-	length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-	chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
-	if (chkpt_topops == NULL)
-	  {
-	    log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	    TR_TABLE_CS_EXIT (thread_p);
-	    return;
-	  }
-
-	/* CHECKPOINTING THE TOP ACTIONS */
-	for (i = 0, ntrans = 0, ntops = 0; i < log_Gl.trantable.num_total_indices; i++)
-	  {
-	    /*
-	     * Don't checkpoint current system transaction. That is, the one of
-	     * checkpoint process
-	     */
-	    if (i == LOG_SYSTEM_TRAN_INDEX)
-	      {
-		continue;
-	      }
-	    act_tdes = LOG_FIND_TDES (i);
-	    error_code =
-		    logpb_checkpoint_topops (thread_p, chkpt_topops, tmp_chkpt, act_tdes, ntops, length_all_tops, &m_sysops);
-	    if (error_code != NO_ERROR)
-	      {
-		return;
-	      }
-	  }
-      }
-    else
-      {
-	tmp_chkpt.ntops = 1;
-	length_all_tops = sizeof (*chkpt_topops) * tmp_chkpt.ntops;
-	chkpt_topops = (LOG_INFO_CHKPT_SYSOP *) malloc (length_all_tops);
-	if (chkpt_topops == NULL)
-	  {
-	    log_Gl.prior_info.prior_lsa_mutex.unlock ();
-	    TR_TABLE_CS_EXIT (thread_p);
-	    return;
-	  }
+	assert (act_tdes != nullptr);
+	load_checkpoint_trans (*act_tdes, smallest_lsa);
+	load_checkpoint_topop (*act_tdes);
       }
 
     // Checkpoint system transactions' topops
-    mapper = [thread_p, &chkpt_topops, &tmp_chkpt, &ntops, &length_all_tops, &error_code, this] (log_tdes &tdes)
+    mapper = [this] (log_tdes &tdes)
     {
-      error_code =
-	      logpb_checkpoint_topops (thread_p, chkpt_topops, tmp_chkpt, &tdes, ntops, length_all_tops, &m_sysops);
+      load_checkpoint_topop (tdes);
     };
-
     log_system_tdes::map_all_tdes (mapper);
-
-    //EXIT the critical section
-    log_Gl.prior_info.prior_lsa_mutex.unlock ();
-    TR_TABLE_CS_EXIT (thread_p);
   }
 
 }
