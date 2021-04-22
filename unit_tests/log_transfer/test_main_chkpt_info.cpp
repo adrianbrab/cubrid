@@ -19,15 +19,11 @@
 #define CATCH_CONFIG_MAIN
 #include "catch2/catch.hpp"
 
-#include "client_credentials.hpp"
 #define private public
 #include "log_checkpoint_info.hpp"
 #undef private
-#include "log_impl.h"
 #include "log_lsa.hpp"
 #include "log_record.hpp"
-#include "mem_block.hpp"
-#include "thread_entry.hpp"
 #include "system_parameter.h"
 
 #include <algorithm>
@@ -45,14 +41,9 @@ class test_env_chkpt
     ~test_env_chkpt ();
 
     LOG_LSA generate_log_lsa();
-    LOG_TDES *generate_tdes (int index);
-    LOG_2PC_GTRINFO generate_2pc_gtrinfo();
-    LOG_2PC_COORDINATOR *generate_2pc_coordinator();
-    CLIENTIDS generate_client (int index);
     LOG_INFO_CHKPT_TRANS generate_log_info_chkpt_trans();
     LOG_INFO_CHKPT_SYSOP generate_log_info_chkpt_sysop();
     std::vector<LOG_LSA> used_logs;
-    void generate_tran_table();
 
     static constexpr int MAX_RAND = 32700;
     static void require_equal (checkpoint_info before, checkpoint_info after);
@@ -121,78 +112,7 @@ TEST_CASE ("Test pack/unpack checkpoint_info class 3", "")
 
 }
 
-TEST_CASE ("Test load and recovery on empty tran table", "")
-{
-  test_env_chkpt env;
-  LOG_LSA smallest_lsa;
-  LOG_LSA star_lsa;
-  THREAD_ENTRY thd;
-
-  env.after.load_trantable_snapshot (&thd, smallest_lsa);
-  env.after.recovery_analysis (&thd, star_lsa);
-  env.after.recovery_2pc_analysis (&thd);
-
-}
-
-void check_load (checkpoint_info obj)
-{
-  REQUIRE (log_Gl.trantable.num_total_indices - 1 == obj.m_trans.size());
-  std::vector<checkpoint_tran_info>::iterator it;
-  int found = 0;
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      it = find (obj.m_trans.begin(), obj.m_trans.end(), log_Gl.trantable.all_tdes[i]->trid);
-      if (it != obj.m_trans.end())
-	{
-	  found++;
-	}
-    }
-  REQUIRE (found == log_Gl.trantable.num_total_indices - 1);
-}
-
-int search_for_id (int id)
-{
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      if (log_Gl.trantable.all_tdes[i]->trid == id)
-	{
-	  return 1;
-	}
-    }
-  return 0;
-}
-
-void check_recovery (checkpoint_info obj)
-{
-  REQUIRE (log_Gl.trantable.num_total_indices - 1 == obj.m_trans.size());
-  int found = 0;
-  for (const checkpoint_tran_info tran_info : obj.m_trans)
-    {
-      if (search_for_id (tran_info.trid))
-	{
-	  found++;
-	}
-    }
-  REQUIRE (found == log_Gl.trantable.num_total_indices - 1);
-}
-
-TEST_CASE ("Test load and recovery on 100 tran table entries", "")
-{
-  test_env_chkpt env;
-  LOG_LSA smallest_lsa;
-  LOG_LSA start_lsa;
-  THREAD_ENTRY thd;
-
-  env.generate_tran_table();
-  env.after.load_trantable_snapshot (&thd, smallest_lsa);
-  check_load (env.after);
-  env.after.recovery_analysis (&thd, start_lsa);
-  env.after.recovery_2pc_analysis (&thd);
-  check_recovery (env.after);
-
-}
-
-test_env_chkpt::test_env_chkpt ()
+test_env_chkpt::test_env_chkpt () : test_env_chkpt (100, 100)
 {
 }
 
@@ -284,99 +204,6 @@ test_env_chkpt::require_equal (checkpoint_info before, checkpoint_info after)
   REQUIRE (before.m_has_2pc == after.m_has_2pc);
 }
 
-LOG_2PC_GTRINFO
-test_env_chkpt::generate_2pc_gtrinfo()
-{
-  log_2pc_gtrinfo pc;
-  pc.info_length = rand() % MAX_RAND;
-  pc.info_data = malloc (pc.info_length);
-
-  return pc;
-}
-
-LOG_2PC_COORDINATOR *
-test_env_chkpt::generate_2pc_coordinator()
-{
-  log_2pc_coordinator *pc = new log_2pc_coordinator();
-  pc->num_particps = rand() % MAX_RAND;
-  pc->particp_id_length = rand() % MAX_RAND;
-
-  return pc;
-}
-
-CLIENTIDS
-test_env_chkpt::generate_client (int index)
-{
-  clientids clnt;
-  char number[25];
-
-  clnt.client_type = static_cast<db_client_type> (1);
-  sprintf (number, "client_%d", index);
-  clnt.client_info = (number);
-  sprintf (number, "db_user_%d", index);
-  clnt.db_user = (number);
-  sprintf (number, "database_%d", index);
-  clnt.program_name = (number);
-  sprintf (number, "login_%d", index);
-  clnt.login_name = (number);
-  sprintf (number, "host_%d", index);
-  clnt.host_name = (number);
-  clnt.process_id = rand() % MAX_RAND;
-
-  return clnt;
-}
-
-LOG_TDES *
-test_env_chkpt::generate_tdes (int index)
-{
-  LOG_TDES *tdes = new log_tdes();
-  tdes->trid = index;
-  tdes->tran_index = index;
-
-  tdes->tail_lsa = generate_log_lsa();
-  tdes->isloose_end = std::rand() % 2;
-  tdes->head_lsa = generate_log_lsa();
-  tdes->state    = static_cast<TRAN_STATE> (std::rand() % TRAN_UNACTIVE_UNKNOWN);
-
-  tdes->undo_nxlsa = generate_log_lsa();
-  tdes->posp_nxlsa = generate_log_lsa();
-  tdes->savept_lsa = generate_log_lsa();
-  tdes->tail_topresult_lsa = generate_log_lsa();
-  tdes->rcv.tran_start_postpone_lsa = generate_log_lsa();
-  tdes->wait_msecs = rand() % MAX_RAND;
-  tdes->client_id  = rand() % MAX_RAND;
-  tdes->gtrid      = rand() % MAX_RAND;
-
-  tdes->num_transient_classnames = rand() % MAX_RAND;
-  tdes->num_repl_records         = rand() % MAX_RAND;
-  tdes->cur_repl_record          = rand() % MAX_RAND;
-  tdes->append_repl_recidx       = rand() % MAX_RAND;
-  tdes->fl_mark_repl_recidx      = rand() % MAX_RAND;
-  tdes->repl_insert_lsa          = generate_log_lsa();
-  tdes->repl_update_lsa          = generate_log_lsa();
-
-  tdes->client  = generate_client (index);
-  tdes->gtrinfo = generate_2pc_gtrinfo();
-  tdes->coord   = generate_2pc_coordinator();
-
-  return tdes;
-}
-
-
-void
-test_env_chkpt::generate_tran_table()
-{
-  log_Gl.trantable.num_total_indices = 100;
-
-  int size = log_Gl.trantable.num_total_indices * sizeof (*log_Gl.trantable.all_tdes);
-  log_Gl.trantable.all_tdes = (LOG_TDES **) malloc (size);
-
-  for (int i = 0; i < log_Gl.trantable.num_total_indices; i++)
-    {
-      log_Gl.trantable.all_tdes[i] = generate_tdes (i);
-    }
-}
-
 //
 // Definitions of CUBRID stuff that is used and cannot be included
 //
@@ -390,34 +217,332 @@ test_env_chkpt::generate_tran_table()
 #define MAX_SMALL_STRING_SIZE 255
 #define LARGE_STRING_CODE 0xff
 
-std::mutex systb_Mutex;
-std::map<TRANID, log_tdes *> systb_System_tdes;
+namespace cubpacking
+{
+  void
+  packer::align (const size_t req_alignment)
+  {
+    m_ptr = PTR_ALIGN (m_ptr, req_alignment);
+  }
+
+  void
+  unpacker::align (const size_t req_alignment)
+  {
+    m_ptr = PTR_ALIGN (m_ptr, req_alignment);
+  }
+
+  static void
+  check_range (const char *ptr, const char *endptr, const size_t amount)
+  {
+    assert (ptr + amount <= endptr);
+    if (ptr + amount > endptr)
+      {
+	abort ();
+      }
+  }
+
+  size_t
+  packer::get_packed_bigint_size (size_t curr_offset)
+  {
+    return DB_ALIGN (curr_offset, MAX_ALIGNMENT) - curr_offset + OR_BIGINT_SIZE;
+  }
+
+  void
+  packer::pack_bigint (const std::int64_t &value)
+  {
+    align (MAX_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+
+    OR_PUT_INT64 (m_ptr, &value);
+    m_ptr += OR_BIGINT_SIZE;
+  }
+
+  void
+  unpacker::unpack_bigint (std::int64_t &value)
+  {
+    align (MAX_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+
+    OR_GET_INT64 (m_ptr, &value);
+    m_ptr += OR_BIGINT_SIZE;
+  }
+
+  size_t
+  packer::get_packed_short_size (size_t curr_offset)
+  {
+    return DB_ALIGN (curr_offset, SHORT_ALIGNMENT) - curr_offset + OR_SHORT_SIZE;
+  }
+
+  void
+  packer::pack_short (const short value)
+  {
+    align (SHORT_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_SHORT_SIZE);
+
+    OR_PUT_SHORT (m_ptr, value);
+    m_ptr += OR_SHORT_SIZE;
+  }
+
+  void
+  unpacker::unpack_short (short &value)
+  {
+    align (SHORT_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_SHORT_SIZE);
+
+    value = OR_GET_SHORT (m_ptr);
+    m_ptr += OR_SHORT_SIZE;
+  }
+
+  size_t
+  packer::get_packed_int_size (size_t curr_offset)
+  {
+    return DB_ALIGN (curr_offset, INT_ALIGNMENT) - curr_offset + OR_INT_SIZE;
+  }
+
+  void
+  packer::pack_int (const int value)
+  {
+    align (INT_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
+
+    OR_PUT_INT (m_ptr, value);
+    m_ptr += OR_INT_SIZE;
+  }
+
+  void
+  unpacker::unpack_int (int &value)
+  {
+    align (INT_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_INT_SIZE);
+
+    value = OR_GET_INT (m_ptr);
+    m_ptr += OR_INT_SIZE;
+  }
+
+  size_t
+  packer::get_packed_c_string_size (const char *str, const size_t str_size, const size_t curr_offset)
+  {
+    size_t entry_size;
+
+    if (str_size < MAX_SMALL_STRING_SIZE)
+      {
+	entry_size = OR_BYTE_SIZE + str_size;
+      }
+    else
+      {
+	entry_size = DB_ALIGN (OR_BYTE_SIZE, INT_ALIGNMENT) + OR_INT_SIZE + str_size;
+      }
+
+    return DB_ALIGN (curr_offset + entry_size, INT_ALIGNMENT) - curr_offset;
+  }
+
+  void
+  packer::pack_c_string (const char *str, const size_t str_size)
+  {
+    if (str_size < MAX_SMALL_STRING_SIZE)
+      {
+	pack_small_string (str, str_size);
+      }
+    else
+      {
+	check_range (m_ptr, m_end_ptr, str_size + 1 + OR_INT_SIZE);
+
+	OR_PUT_BYTE (m_ptr, LARGE_STRING_CODE);
+	m_ptr++;
+
+	pack_large_c_string (str, str_size);
+      }
+  }
+
+  void
+  unpacker::unpack_c_string (char *str, const size_t max_str_size)
+  {
+    size_t len = 0;
+
+    unpack_string_size (len);
+
+    if (len >= max_str_size)
+      {
+	assert (false);
+	return;
+      }
+    if (len > 0)
+      {
+	std::memcpy (str, m_ptr, len);
+	m_ptr += len;
+      }
+
+    str[len] = '\0';
+
+    align (INT_ALIGNMENT);
+  }
+
+  void
+  packer::pack_small_string (const char *string, const size_t str_size)
+  {
+    size_t len;
+
+    if (str_size == 0)
+      {
+	len = strlen (string);
+      }
+    else
+      {
+	len = str_size;
+      }
+
+    if (len > MAX_SMALL_STRING_SIZE)
+      {
+	assert (false);
+	pack_c_string (string, len);
+	return;
+      }
+
+    check_range (m_ptr, m_end_ptr, len + 1);
+
+    OR_PUT_BYTE (m_ptr, len);
+    m_ptr += OR_BYTE_SIZE;
+    if (len > 0)
+      {
+	std::memcpy (m_ptr, string, len);
+	m_ptr += len;
+      }
+
+    align (INT_ALIGNMENT);
+  }
+
+  void
+  packer::pack_large_c_string (const char *string, const size_t str_size)
+  {
+    size_t len;
+
+    if (str_size == 0)
+      {
+	len = strlen (string);
+      }
+    else
+      {
+	len = str_size;
+      }
+
+    align (INT_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, len + OR_INT_SIZE);
+
+    OR_PUT_INT (m_ptr, len);
+    m_ptr += OR_INT_SIZE;
+
+    std::memcpy (m_ptr, string, len);
+    m_ptr += len;
+
+    align (INT_ALIGNMENT);
+  }
+
+  size_t
+  packer::get_packed_string_size (const std::string &str, const size_t curr_offset)
+  {
+    return get_packed_c_string_size (str.c_str (), str.size (), curr_offset);
+  }
+
+  void
+  unpacker::unpack_string_size (size_t &len)
+  {
+    check_range (m_ptr, m_end_ptr, 1);
+    len = OR_GET_BYTE (m_ptr);
+    if (len == LARGE_STRING_CODE)
+      {
+	m_ptr++;
+
+	align (OR_INT_SIZE);
+
+	len = OR_GET_INT (m_ptr);
+	m_ptr += OR_INT_SIZE;
+      }
+    else
+      {
+	m_ptr++;
+      }
+    if (len > 0)
+      {
+	check_range (m_ptr, m_end_ptr, len);
+      }
+  }
+
+  size_t
+  packer::get_packed_bool_size (size_t curr_offset)
+  {
+    return get_packed_int_size (curr_offset);
+  }
+
+  void
+  unpacker::unpack_bigint (std::uint64_t &value)
+  {
+    align (MAX_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+
+    OR_GET_INT64 (m_ptr, &value);
+    m_ptr += OR_BIGINT_SIZE;
+  }
+
+  void
+  unpacker::unpack_bool (bool &value)
+  {
+    int int_val;
+    unpack_int (int_val);
+    assert (int_val == 1 || int_val == 0);
+    value = int_val != 0;
+  }
+
+  void
+  packer::pack_bigint (const std::uint64_t &value)
+  {
+    align (MAX_ALIGNMENT);
+    check_range (m_ptr, m_end_ptr, OR_BIGINT_SIZE);
+
+    OR_PUT_INT64 (m_ptr, &value);
+    m_ptr += OR_BIGINT_SIZE;
+  }
+
+  void
+  packer::pack_bool (bool value)
+  {
+    pack_int (value ? 1 : 0);
+  }
+
+  void
+  packer::set_buffer (char *storage, const size_t amount)
+  {
+    m_start_ptr = storage;
+    m_ptr = storage;
+    m_end_ptr = m_start_ptr + amount;
+  }
+
+  void
+  unpacker::set_buffer (const char *storage, const size_t amount)
+  {
+    m_start_ptr = storage;
+    m_ptr = storage;
+    m_end_ptr = m_start_ptr + amount;
+  }
+
+  packer::packer (void)
+  {
+    // all pointers are initialized to NULL
+  }
+}
 
 //unused stuff needed by the linker
 log_global log_Gl;
-
-int
-or_packed_value_size (const DB_VALUE *value, int collapse_null, int include_domain, int include_domain_classoids)
-{
-  return 0;
-}
-
-char *
-or_pack_value (char *buf, DB_VALUE *value)
-{
-  return nullptr;
-}
-
-char *
-or_unpack_value (const char *buf, DB_VALUE *value)
-{
-  return nullptr;
-}
 
 bool
 prm_get_bool_value (PARAM_ID prmid)
 {
   return false;
+}
+
+const char *
+clientids::get_db_user () const
+{
+  return nullptr;
 }
 
 LOG_PRIOR_NODE *
@@ -461,7 +586,7 @@ fileio_synchronize_all (THREAD_ENTRY *thread_p, bool include_log)
 int
 csect_exit (THREAD_ENTRY *thread_p, int cs_index)
 {
-  assert (true);
+  assert (false);
 }
 
 void
@@ -507,521 +632,11 @@ log_prior_lsa_info::log_prior_lsa_info () = default;
 int
 csect_enter (THREAD_ENTRY *thread_p, int cs_index, int wait_secs)
 {
-  assert (true);
+  assert (false);
 }
 
 void
 log_system_tdes::map_all_tdes (const map_func &func)
 {
-  std::lock_guard<std::mutex> lg (systb_Mutex);
-  for (auto &el : systb_System_tdes)
-    {
-      log_tdes *tdes = el.second;
-      assert (tdes != NULL);
-      func (*tdes);
-    }
-}
-#define NUM_TOTAL_TRAN_INDICES log_Gl.trantable.num_total_indices
-
-void
-logtb_clear_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes)
-{
-  int i, j;
-  DB_VALUE *dbval;
-  HL_HEAPID save_heap_id;
-
-  tdes->isloose_end = false;
-  tdes->state = TRAN_ACTIVE;
-  LSA_SET_NULL (&tdes->head_lsa);
-  LSA_SET_NULL (&tdes->tail_lsa);
-  LSA_SET_NULL (&tdes->undo_nxlsa);
-  LSA_SET_NULL (&tdes->posp_nxlsa);
-  LSA_SET_NULL (&tdes->savept_lsa);
-  LSA_SET_NULL (&tdes->topop_lsa);
-  LSA_SET_NULL (&tdes->tail_topresult_lsa);
-  tdes->topops.last = -1;
-  tdes->gtrid = LOG_2PC_NULL_GTRID;
-  tdes->gtrinfo.info_length = 0;
-  tdes->cur_repl_record = 0;
-  tdes->append_repl_recidx = -1;
-  tdes->fl_mark_repl_recidx = -1;
-  LSA_SET_NULL (&tdes->repl_insert_lsa);
-  LSA_SET_NULL (&tdes->repl_update_lsa);
-  tdes->first_save_entry = NULL;
-  tdes->query_timeout = 0;
-  tdes->query_start_time = 0;
-  tdes->tran_start_time = 0;
-  tdes->waiting_for_res = NULL;
-  tdes->tran_abort_reason = TRAN_NORMAL;
-  tdes->num_exec_queries = 0;
-  tdes->suppress_replication = 0;
-  tdes->has_deadlock_priority = false;
-
-  tdes->num_log_records_written = 0;
-
-  LSA_SET_NULL (&tdes->rcv.tran_start_postpone_lsa);
-  LSA_SET_NULL (&tdes->rcv.sysop_start_postpone_lsa);
-  LSA_SET_NULL (&tdes->rcv.atomic_sysop_start_lsa);
-  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_lsa);
-  LSA_SET_NULL (&tdes->rcv.analysis_last_aborted_sysop_start_lsa);
-}
-
-static void
-logtb_set_tdes (THREAD_ENTRY *thread_p, LOG_TDES *tdes, const BOOT_CLIENT_CREDENTIAL *client_credential,
-		int wait_msecs, TRAN_ISOLATION isolation)
-{
-#if defined(SERVER_MODE)
-  CSS_CONN_ENTRY *conn;
-#endif /* SERVER_MODE */
-  tdes->client.set_ids (*client_credential);
-  tdes->is_user_active = false;
-#if defined(SERVER_MODE)
-
-  conn = thread_p->conn_entry;
-  if (conn != NULL)
-    {
-      tdes->client_id = conn->client_id;
-    }
-  else
-    {
-      tdes->client_id = -1;
-    }
-#else /* SERVER_MODE */
-  tdes->client_id = -1;
-#endif /* SERVER_MODE */
-  tdes->wait_msecs = wait_msecs;
-  tdes->isolation = isolation;
-  tdes->isloose_end = false;
-  tdes->interrupt = false;
-  tdes->topops.stack = NULL;
-  tdes->topops.max = 0;
-  tdes->topops.last = -1;
-  tdes->num_transient_classnames = 0;
-  tdes->first_save_entry = NULL;
-}
-
-static int
-logtb_allocate_tran_index_local (THREAD_ENTRY *thread_p, TRANID trid, TRAN_STATE state, int wait_msecs,
-				 TRAN_ISOLATION isolation)
-{
-  int i;
-  int visited_loop_start_pos;
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;		/* The assigned index */
-  int save_tran_index;		/* Save as a good index to assign */
-  /*
-   * Note that we could have found the entry already and it may be stored in
-   * tran_index.
-   */
-  for (i = log_Gl.trantable.hint_free_index, visited_loop_start_pos = 0;
-       tran_index == NULL_TRAN_INDEX && visited_loop_start_pos < 2; i = (i + 1) % NUM_TOTAL_TRAN_INDICES)
-    {
-      if (log_Gl.trantable.all_tdes[i]->trid == NULL_TRANID)
-	{
-	  tran_index = i;
-	}
-      if (i == log_Gl.trantable.hint_free_index)
-	{
-	  visited_loop_start_pos++;
-	}
-    }
-
-  if (tran_index != NULL_TRAN_INDEX)
-    {
-      log_Gl.trantable.hint_free_index = (tran_index + 1) % NUM_TOTAL_TRAN_INDICES;
-
-      log_Gl.trantable.num_assigned_indices++;
-      tdes = LOG_FIND_TDES (tran_index);
-      tdes->tran_index = tran_index;
-      logtb_clear_tdes (thread_p, tdes);
-      logtb_set_tdes (thread_p, tdes, NULL, wait_msecs, isolation);
-
-      if (trid == NULL_TRANID)
-	{
-	  /* Assign a new transaction identifier for the new index */
-	  tdes->trid = log_Gl.trantable.num_assigned_indices;
-	  state = TRAN_ACTIVE;
-	}
-      else
-	{
-	  tdes->trid = trid;
-	  tdes->state = state;
-	}
-
-      tdes->tran_abort_reason = TRAN_NORMAL;
-    }
-
-  return tran_index;
-}
-
-log_tdes *
-systdes_create_tdes ()
-{
-  log_tdes *tdes = new log_tdes ();
-  return tdes;
-}
-
-log_tdes *
-log_system_tdes::rv_get_tdes (TRANID trid)
-{
-  auto it = systb_System_tdes.find (trid);
-  if (it != systb_System_tdes.end ())
-    {
-      return it->second;
-    }
-  else
-    {
-      return NULL;
-    }
-}
-
-log_tdes *
-log_system_tdes::rv_get_or_alloc_tdes (TRANID trid)
-{
-  log_tdes *tdes = rv_get_tdes (trid);
-  if (tdes == NULL)
-    {
-      log_tdes *tdes = systdes_create_tdes ();
-      tdes->state = TRAN_UNACTIVE_UNILATERALLY_ABORTED;
-      tdes->trid = trid;
-      systb_System_tdes[trid] = tdes;
-      return tdes;
-    }
-  else
-    {
-      assert (tdes->trid == trid);
-      return tdes;
-    }
-}
-
-LOG_TDES *
-logtb_rv_find_allocate_tran_index (THREAD_ENTRY *thread_p, TRANID trid, const LOG_LSA *log_lsa)
-{
-  LOG_TDES *tdes;		/* Transaction descriptor */
-  int tran_index;
-
-  assert (trid != NULL_TRANID);
-
-  if (trid < NULL_TRANID)
-    {
-      // *INDENT-OFF*
-      return log_system_tdes::rv_get_or_alloc_tdes (trid);
-      // *INDENT-ON*
-    }
-
-  /*
-   * If this is the first time, the transaction is seen. Assign a new
-   * index to describe it and assume that the transaction was active
-   * at the time of the crash, and thus it will be unilaterally aborted
-   */
-  tran_index = logtb_find_tran_index (thread_p, trid);
-  if (tran_index == NULL_TRAN_INDEX)
-    {
-      /* Define the index */
-      tran_index =
-	      logtb_allocate_tran_index_local (thread_p, trid, TRAN_UNACTIVE_UNILATERALLY_ABORTED, TRAN_LOCK_INFINITE_WAIT,
-		  TRAN_SERIALIZABLE);
-      tdes = LOG_FIND_TDES (tran_index);
-      if (tran_index == NULL_TRAN_INDEX || tdes == NULL)
-	{
-	  /*
-	   * Unable to assign a transaction index. The recovery process
-	   * cannot continue
-	   */
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "log_recovery_find_or_alloc");
-	  return NULL;
-	}
-      else
-	{
-	  LSA_COPY (&tdes->head_lsa, log_lsa);
-	}
-    }
-  else
-    {
-      tdes = LOG_FIND_TDES (tran_index);
-    }
-
-  return tdes;
-}
-
-void
-logpb_fatal_error (THREAD_ENTRY *thread_p, bool log_exit, const char *file_name, const int lineno, const char *fmt,
-		   ...)
-{
   assert (false);
-}
-
-static const int LOG_TOPOPS_STACK_INCREMENT = 3;	/* No more than 3 nested top system operations */
-void *
-logtb_realloc_topops_stack (LOG_TDES *tdes, int num_elms)
-{
-  size_t size;
-  void *newptr;
-
-  if (num_elms < LOG_TOPOPS_STACK_INCREMENT)
-    {
-      num_elms = LOG_TOPOPS_STACK_INCREMENT;
-    }
-
-  size = tdes->topops.max + num_elms;
-  size = size * sizeof (*tdes->topops.stack);
-
-  newptr = (LOG_TOPOPS_ADDRESSES *) realloc (tdes->topops.stack, size);
-  if (newptr != NULL)
-    {
-      tdes->topops.stack = (LOG_TOPOPS_ADDRESSES *) newptr;
-      if (tdes->topops.max == 0)
-	{
-	  tdes->topops.last = -1;
-	}
-      tdes->topops.max += num_elms;
-    }
-  else
-    {
-      return NULL;
-    }
-  return tdes->topops.stack;
-}
-
-int
-logpb_prior_lsa_append_all_list (THREAD_ENTRY *thread_p)
-{
-  LOG_PRIOR_NODE *prior_list;
-  INT64 current_size;
-  current_size = log_Gl.prior_info.list_size;
-  prior_list = log_Gl.prior_info.prior_list_header;
-
-  log_Gl.prior_info.prior_list_header = NULL;
-  log_Gl.prior_info.prior_list_tail = NULL;
-  log_Gl.prior_info.list_size = 0;
-
-//  if (prior_list != NULL)
-//    {
-//      logpb_append_prior_lsa_list (thread_p, prior_list);
-//    }
-
-  return NO_ERROR;
-}
-
-int
-logpb_fetch_page (THREAD_ENTRY *thread_p, const LOG_LSA *req_lsa, LOG_CS_ACCESS_MODE access_mode,
-		  LOG_PAGE *log_pgptr)
-{
-  LOG_LSA append_lsa, append_prev_lsa;
-  int rv;
-
-  assert (log_pgptr != NULL);
-  assert (req_lsa != NULL);
-  assert (req_lsa->pageid != NULL_PAGEID);
-
-  LSA_COPY (&append_lsa, &log_Gl.hdr.append_lsa);
-  LSA_COPY (&append_prev_lsa, &log_Gl.append.prev_lsa);
-
-  /*
-   * This If block ensure belows,
-   *  case 1. log page (of pageid) is in log page buffer (not prior_lsa list)
-   *  case 2. EOL record which is written temporarily by
-   *          logpb_flush_all_append_pages is cleared so there is no EOL
-   *          in log page
-   */
-  //TODO
-//  if (LSA_LE (&append_lsa, req_lsa)	/* for case 1 */
-//      || LSA_LE (&append_prev_lsa, req_lsa))	/* for case 2 */
-//    {
-//      assert (LSA_LE (&log_Gl.append.prev_lsa, &log_Gl.hdr.append_lsa));
-
-//      /*
-//       * copy prior lsa list to log page buffer to ensure that required
-//       * pageid is in log page buffer
-//       */
-//      if (LSA_LE (&log_Gl.hdr.append_lsa, req_lsa))	/* retry with mutex */
-//        {
-//          logpb_prior_lsa_append_all_list (thread_p);
-//        }
-//    }
-
-  /*
-   * most of the cases, we don't need calling logpb_copy_page with LOG_CS exclusive access,
-   * if needed, we acquire READ mode in logpb_copy_page
-   */
-//  rv = logpb_copy_page (thread_p, req_lsa->pageid, access_mode, log_pgptr);
-  if (rv != NO_ERROR)
-    {
-      return ER_FAILED;
-    }
-
-  return NO_ERROR;
-}
-
-PGLENGTH
-db_log_page_size (void)
-{
-  return 16384;
-}
-
-void LOG_READ_ALIGN (THREAD_ENTRY *thread_p, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
-{
-  lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
-  while (lsa->offset >= (int) LOGAREA_SIZE)
-    {
-      assert (log_pgptr != NULL);
-      lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ALIGN");
-	}
-      lsa->offset -= LOGAREA_SIZE;
-      lsa->offset = DB_ALIGN (lsa->offset, DOUBLE_ALIGNMENT);
-    }
-}
-
-void LOG_READ_ADD_ALIGN (THREAD_ENTRY *thread_p, size_t add, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
-{
-  lsa->offset += add;
-  LOG_READ_ALIGN (thread_p, lsa, log_pgptr);
-}
-
-void LOG_READ_ADVANCE_WHEN_DOESNT_FIT (THREAD_ENTRY *thread_p, size_t length, LOG_LSA *lsa, LOG_PAGE *log_pgptr)
-{
-  if (lsa->offset + static_cast < int > (length) >= static_cast < int > (LOGAREA_SIZE))
-    {
-      assert (log_pgptr != NULL);
-      lsa->pageid++;
-      if (logpb_fetch_page (thread_p, lsa, LOG_CS_FORCE_USE, log_pgptr) != NO_ERROR)
-	{
-	  logpb_fatal_error (thread_p, true, ARG_FILE_LINE, "LOG_READ_ADVANCE_WHEN_DOESNT_FIT");
-	}
-      lsa->offset = 0;
-    }
-}
-
-int
-log_read_sysop_start_postpone (THREAD_ENTRY *thread_p, LOG_LSA *log_lsa, LOG_PAGE *log_page, bool with_undo_data,
-			       LOG_REC_SYSOP_START_POSTPONE *sysop_start_postpone, int *undo_buffer_size,
-			       char **undo_buffer, int *undo_size, char **undo_data)
-{
-  int error_code = NO_ERROR;
-
-  if (log_page->hdr.logical_pageid != log_lsa->pageid)
-    {
-      error_code = logpb_fetch_page (thread_p, log_lsa, LOG_CS_FORCE_USE, log_page);
-      if (error_code != NO_ERROR)
-	{
-	  return error_code;
-	}
-    }
-
-  /* skip log record header */
-  LOG_READ_ADD_ALIGN (thread_p, sizeof (LOG_RECORD_HEADER), log_lsa, log_page);
-
-  /* read sysop_start_postpone */
-  LOG_READ_ADVANCE_WHEN_DOESNT_FIT (thread_p, sizeof (LOG_REC_SYSOP_START_POSTPONE), log_lsa, log_page);
-  *sysop_start_postpone = * (LOG_REC_SYSOP_START_POSTPONE *) (log_page->area + log_lsa->offset);
-  return NO_ERROR;
-}
-
-int
-logtb_get_current_tran_index (void)
-{
-  return 1;
-}
-
-int
-logtb_find_tran_index (THREAD_ENTRY *thread_p, TRANID trid)
-{
-  int i;
-  int tran_index = NULL_TRAN_INDEX;	/* The transaction index */
-  LOG_TDES *tdes;		/* Transaction descriptor */
-
-  assert (trid != NULL_TRANID);
-
-  /* Avoid searching as much as possible */
-  tran_index = LOG_FIND_THREAD_TRAN_INDEX (thread_p);
-  tdes = LOG_FIND_TDES (tran_index);
-  if (tdes == NULL || tdes->trid != trid)
-    {
-      tran_index = NULL_TRAN_INDEX;
-      /* Search the transaction table for such transaction */
-      for (i = 0; i < NUM_TOTAL_TRAN_INDICES; i++)
-	{
-	  tdes = log_Gl.trantable.all_tdes[i];
-	  if (tdes != NULL && tdes->trid != NULL_TRANID && tdes->trid == trid)
-	    {
-	      tran_index = i;
-	      break;
-	    }
-	}
-    }
-
-  return tran_index;
-}
-
-void
-log_2pc_recovery_analysis_info (THREAD_ENTRY *thread_p, log_tdes *tdes, LOG_LSA *upto_chain_lsa)
-{
-  assert (true);
-}
-
-namespace cubmem
-{
-
-  void
-  standard_alloc (block &b, size_t size)
-  {
-    if (b.ptr == NULL || b.dim == 0)
-      {
-	b.ptr = new char[size];
-	b.dim = size;
-      }
-    else if (size <= b.dim)
-      {
-	// do not reduce
-      }
-    else
-      {
-	char *new_ptr = new char[size];
-	std::memcpy (new_ptr, b.ptr, b.dim);
-
-	delete[] b.ptr;
-
-	b.ptr = new_ptr;
-	b.dim = size;
-      }
-  }
-
-  void
-  standard_dealloc (block &b)
-  {
-    delete [] b.ptr;
-    b.ptr = NULL;
-    b.dim = 0;
-  }
-
-
-  const struct block_allocator STANDARD_BLOCK_ALLOCATOR
-  {
-    standard_alloc, standard_dealloc
-  };
-  block_allocator::block_allocator (const alloc_func &alloc_f, const dealloc_func &dealloc_f)
-    : m_alloc_f (alloc_f)
-    , m_dealloc_f (dealloc_f)
-  {
-  }
-}
-
-mvcc_info::mvcc_info ()
-  : snapshot ()
-  , id (MVCCID_NULL)
-  , recent_snapshot_lowest_active_mvccid (MVCCID_NULL)
-  , sub_ids ()
-{
-}
-
-mvcc_snapshot::mvcc_snapshot ()
-  : lowest_active_mvccid (MVCCID_NULL)
-  , highest_completed_mvccid (MVCCID_NULL)
-  , m_active_mvccs ()
-  , snapshot_fnc (NULL)
-  , valid (false)
-{
 }
