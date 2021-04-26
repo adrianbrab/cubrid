@@ -380,9 +380,8 @@ namespace cublog
 	tdes->rcv.sysop_start_postpone_lsa = sysop.sysop_start_postpone_lsa;
 	tdes->rcv.atomic_sysop_start_lsa = sysop.atomic_sysop_start_lsa;
 	log_lsa_local = sysop.sysop_start_postpone_lsa;
-	error_code =
-		log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
-					       NULL, NULL, NULL, NULL);
+	error_code = log_read_sysop_start_postpone (thread_p, &log_lsa_local, log_page_local, false, &sysop_start_postpone,
+		     NULL, NULL, NULL, NULL);
 	if (error_code != NO_ERROR)
 	  {
 	    assert (false);
